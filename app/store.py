@@ -25,10 +25,14 @@ CREATE TABLE IF NOT EXISTS doc_references(doc_id TEXT, doc_title TEXT, deal_id T
     quoted_value REAL, quoted_commit TEXT, owner_email TEXT);
 CREATE TABLE IF NOT EXISTS files_seen(path TEXT PRIMARY KEY, sha256 TEXT, mtime REAL, kind TEXT, doc_id TEXT,
     commit_id TEXT);
+CREATE TABLE IF NOT EXISTS access_log(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, email TEXT, action TEXT,
+    detail TEXT, outcome TEXT);
+CREATE TABLE IF NOT EXISTS access_requests(id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, email TEXT,
+    reason TEXT, status TEXT, deal_id TEXT, decided_by TEXT, decided_at TEXT);
 """
 
 TABLES = ["users", "deals", "deal_members", "documents", "models", "commits", "branches", "cell_changes",
-          "model_metric_cells", "commit_metrics", "doc_references", "files_seen",
+          "model_metric_cells", "commit_metrics", "doc_references", "files_seen", "access_log", "access_requests",
           "model_versions", "key_metrics"]
 
 

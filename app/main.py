@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import agent, ingest, store, vcs, watcher
+from app import agent, governance, ingest, store, vcs, watcher
 from app.config import STATIC_DIR
 
 
@@ -38,6 +38,24 @@ class ChatRequest(BaseModel):
 class ImportRequest(BaseModel):
     user: str
     path: str | None = None
+
+
+class StaffingRequest(BaseModel):
+    user: str
+    deal: str
+    member: str
+    staffed: bool
+
+
+class AccessRequest(BaseModel):
+    user: str
+    reason: str
+
+
+class DecisionRequest(BaseModel):
+    user: str
+    approve: bool
+    deal: str | None = None
 
 
 class DemoSaveRequest(BaseModel):
@@ -90,7 +108,7 @@ def users():
 
 @app.get("/api/me")
 def me(user: str):
-    return {"user": _require_user(user), "deals": store.accessible_deals(user)}
+    return {"user": _require_user(user), "deals": store.accessible_deals(user), "can_manage_access": governance.is_admin(user)}
 
 
 @app.post("/api/chat")
@@ -156,6 +174,45 @@ def demo_save(req: DemoSaveRequest):
             dest.touch()  # a save happens now
             return {"saved": str(rel)}
     raise HTTPException(status_code=400, detail="No more scripted saves. Edit and save a model in Excel instead.")
+
+
+def _gov(fn, *args):
+    try:
+        return fn(*args)
+    except governance.GovernanceError as e:
+        status = 403 if "Only Compliance" in str(e) else 400
+        raise HTTPException(status_code=status, detail=str(e))
+
+
+@app.get("/api/governance")
+def governance_overview(user: str):
+    _require_user(user)
+    return _gov(governance.overview, user)
+
+
+@app.post("/api/governance/staffing")
+def governance_staffing(req: StaffingRequest):
+    _require_user(req.user)
+    _gov(governance.set_member, req.user, req.deal, req.member, req.staffed)
+    return _gov(governance.overview, req.user)
+
+
+@app.post("/api/access-requests")
+def create_access_request(req: AccessRequest):
+    _require_user(req.user)
+    return _gov(governance.request_access, req.user, req.reason)
+
+
+@app.get("/api/access-requests/mine")
+def my_access_requests(user: str):
+    _require_user(user)
+    return {"requests": governance.my_requests(user)}
+
+
+@app.post("/api/access-requests/{request_id}/decide")
+def decide_access_request(request_id: int, req: DecisionRequest):
+    _require_user(req.user)
+    return _gov(governance.decide, req.user, request_id, req.approve, req.deal)
 
 
 # Proactive alerts are generated per (commit, user) because each user sees the brain through their own walls.

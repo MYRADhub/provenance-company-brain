@@ -4,7 +4,7 @@ import json
 
 from openai import OpenAI
 
-from app import brain, store, vcs
+from app import brain, governance, store, vcs
 from app.config import LLM_MODEL
 
 TODAY = "Monday, October 12, 2026"
@@ -112,12 +112,12 @@ Strong answers join them: take the fact from the database, then find the reason 
 
 Rules:
 - Ground every claim in tool results. Cite sources inline by document title in italics, e.g. *Management call - Acme Freight CFO (Oct 6)*.
-- When numbers changed, give old -> new values, the short commit hash and branch, the author and the date, then the reason with its source.
+- When numbers changed, say old -> new, who changed it and when (e.g. "Priya, Oct 8"), then the reason and its source. Do not show commit hashes, branch slugs, cell references or tool names unless the user asks for them.
 - Information barriers are enforced. If a tool returns "restricted" or a search finds nothing relevant, do not guess or hint at what might exist.
   Say that you have nothing the user is cleared to see on that topic and that, if it relates to a walled deal,
   they should contact {compliance.get('name', 'Compliance')} ({compliance.get('email', '')}). Never confirm or deny that a restricted deal exists.
-- Be concise and decision-oriented: lead with the answer, then the evidence. Use short Markdown sections or bullets and bold the key numbers.
-- When you notice something the user should act on (stale numbers in a deck, a contradiction with a memo, someone to loop in), say so explicitly under **Actions**."""
+- Write for a busy partner who is not technical: lead with a one-sentence answer, then at most 4 short bullets of evidence. No headings for short answers, no tables, bold at most two key numbers. Prefer plain words over jargon. Refer to the current user as "you", never by name.
+- When you notice something the user should act on (stale numbers in a deck, a contradiction with a memo, someone to loop in), end with one line starting with **Next step:**."""
 
 
 def _restricted() -> dict:
@@ -195,6 +195,8 @@ def run(email: str, messages: list[dict]) -> dict:
     client = OpenAI()
     items: list = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("content")]
     tools = _openai_tools()
+    question = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+    governance.log(email, "question", question)
     instructions = _system_prompt(email)
     trace: list[dict] = []
     sources: dict[str, dict] = {}
@@ -222,6 +224,8 @@ def run(email: str, messages: list[dict]) -> dict:
                 args = {}
                 output, summary = {"error": str(e)}, f"error: {e}"
             trace.append({"tool": call.name, "input": args, "summary": summary})
+            if summary == "restricted":
+                governance.log(email, "blocked", f"{call.name} {json.dumps(args)}", "blocked")
             items.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(output, default=str)})
     else:
         answer = answer or "I ran out of steps before finishing. Try a narrower question."
@@ -245,10 +249,9 @@ by {commit.get('author_email')} at {commit.get('committed_at')}. Commit message:
 Cell changes versus the parent:
 {changes or '- none detected'}
 
-Write a short proactive alert for me:
-1. What changed and the impact on returns (use the model graph).
-2. Why it changed, with the source from the brain (if no reason is documented yet, say so -- that is itself a finding).
-3. Which documents now quote stale numbers and who owns them.
-4. Any conflict with the IC memo or firm policy, and who should be looped in.
-Keep it tight; this is a notification, not a report."""
+Write a short proactive alert for me, as a notification a partner reads on their phone:
+- First line: one sentence on what changed and what it does to returns.
+- Then at most 3 bullets: why it changed (with source, or "no reason documented yet"), which documents now use old numbers and who owns them, and any conflict with the IC memo or firm policy.
+- End with one **Next step:** line.
+No headings, no commit hashes, no cell references."""
     return run(email, [{"role": "user", "content": prompt}])
