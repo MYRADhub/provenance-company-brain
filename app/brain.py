@@ -49,11 +49,14 @@ def search(email: str, query: str, deal: str | None = None, max_results: int = 8
         # HydraDB returns a body prefix as the title for message-kind sources, so the SQLite
         # document record is the source of truth for title, date and kind.
         doc = store.get_document(doc_id) if doc_id else None
-        doc = doc or {}
+        if doc is None:
+            # Not registered in SQLite: deleted, or not yet saved (e.g. a change log for a version
+            # the demo has not saved). HydraDB deletes are async, so SQLite decides what exists.
+            continue
         chunks.append(
             {
                 "id": doc_id,
-                "title": doc.get("title") or _get(c, "source_title"),
+                "title": doc["title"],
                 "deal": doc.get("deal_id") or _get(meta, "deal"),
                 "kind": doc.get("kind") or _get(meta, "doc_kind") or _get(c, "source_type"),
                 "date": doc.get("date") or _get(extra, "date"),

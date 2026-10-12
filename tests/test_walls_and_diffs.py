@@ -57,3 +57,25 @@ def test_diff_workbooks_detects_labelled_cell_change():
     diff = diff_workbooks(v[1]["file_path"], v[2]["file_path"])
     labels = {d["label"] for d in diff}
     assert any("Growth" in l for l in labels)
+
+
+def test_brain_drops_results_not_registered_in_sqlite(monkeypatch):
+    from types import SimpleNamespace
+
+    from app import brain
+
+    def chunk(doc_id):
+        return SimpleNamespace(id=doc_id, chunk_content="x", source_title="t", source_type="message",
+                               metadata={}, additional_metadata={})
+
+    fake = SimpleNamespace(query=lambda **_: SimpleNamespace(data=SimpleNamespace(
+        chunks=[chunk("falcon_model_changelog_v99"), chunk("falcon_ic_deck")], graph_context=None)))
+    monkeypatch.setattr(brain, "hydra", lambda: fake)
+    ids = [c["id"] for c in brain.search(PRIYA, "anything")["chunks"]]
+    assert ids == ["falcon_ic_deck"]
+
+
+def test_brain_returns_nothing_for_unknown_user():
+    from app import brain
+
+    assert brain.search("nobody@example.com", "anything") == {"chunks": [], "graph_paths": []}
