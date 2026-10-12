@@ -42,6 +42,14 @@ def main(skip_hydra: bool = False) -> None:
         print(f"recorded {len(DOCUMENTS)} documents in SQLite (HydraDB skipped)")
         return
 
+    # Versions after the seeded ones are saved live in the demo; drop any left over from a previous run.
+    from app.config import COLLECTION, HYDRA_DATABASE, hydra
+    from app.seed_content import MODEL_VERSIONS
+    live_ids = [f"falcon_model_changelog_v{v['version']}" for v in MODEL_VERSIONS if v["version"] not in SEEDED_VERSIONS]
+    if live_ids:
+        hydra().context.delete(database=HYDRA_DATABASE, collection=COLLECTION, ids=live_ids, type="knowledge")
+        print(f"removed live-demo change logs: {live_ids}")
+
     ids = versioning.ingest_documents(DOCUMENTS, wait=False)
     changelog_ids = [f"falcon_model_changelog_v{v}" for v in SEEDED_VERSIONS]
     print(f"ingested {len(ids)} documents + {len(changelog_ids)} change logs; waiting for indexing...")
