@@ -16,7 +16,8 @@ from app import ingest, store  # noqa: E402
 
 def main() -> None:
     with ingest.exclusive():
-        for src in sorted(p for p in ingest.LIVE_ROOT.rglob("*") if p.is_file()):
+        # Newest save first, so each removal moves the branch head back onto a surviving commit.
+        for src in sorted((p for p in ingest.LIVE_ROOT.rglob("*") if p.is_file()), reverse=True):
             dest = ingest.IMPORT_ROOT / src.relative_to(ingest.LIVE_ROOT)
             seen = store._rows("SELECT commit_id FROM files_seen WHERE path = ?", (str(dest),))
             seen += store._rows("SELECT commit_id FROM files_seen WHERE path = ?", (str(dest.relative_to(ingest.IMPORT_ROOT)),))

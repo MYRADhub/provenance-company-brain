@@ -256,3 +256,40 @@ def test_reset_demo_undoes_live_save_and_allows_replay(deals_root, corpus, offli
     shutil.copy2(live, deals_root / "Falcon" / "Models" / live.name)
     replay = ingest.scan(deals_root)["commits"]
     assert [c["id"] for c in replay] == [saved["id"]]
+
+
+def test_staffing_changes_survive_rescans_until_deal_json_changes(deals_root, offline):
+    from app import governance
+
+    ingest.scan(deals_root)
+    governance.set_member("sam@northbeam.com", "falcon", "marcus@northbeam.com", True)
+    ingest.scan(deals_root)
+    assert store.can_access_deal("marcus@northbeam.com", "falcon")
+
+    deal_json = deals_root / "Falcon" / "deal.json"
+    info = json.loads(deal_json.read_text())
+    info["summary"] = info.get("summary", "") + " Updated."
+    deal_json.write_text(json.dumps(info))
+    ingest.scan(deals_root)
+    assert not store.can_access_deal("marcus@northbeam.com", "falcon")
+
+
+def test_reset_demo_handles_two_live_saves(deals_root, corpus, offline, monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("reset_demo2", Path(__file__).parent.parent / "scripts" / "reset_demo.py")
+    reset_demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reset_demo)
+    monkeypatch.setattr(ingest, "IMPORT_ROOT", deals_root)
+    monkeypatch.setattr(ingest, "LIVE_ROOT", corpus / "_live")
+
+    ingest.scan(deals_root)
+    head_before = vcs.list_models("falcon")[0]["head"]
+    for live in sorted((corpus / "_live" / "Falcon" / "Models").glob("*.xlsx")):
+        shutil.copy2(live, deals_root / "Falcon" / "Models" / live.name)
+        ingest.scan(deals_root)
+    assert vcs.list_models("falcon")[0]["head"] != head_before
+
+    reset_demo.main()
+    head = vcs.list_models("falcon")[0]["head"]
+    assert head == head_before and vcs.get_commit(head) is not None

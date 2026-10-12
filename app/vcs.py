@@ -268,8 +268,20 @@ def commit_metrics(commit_id: str | None) -> dict:
 
 # ----------------------------------------------------------------- recording
 
+def resolve_commit_id(commit_id: str) -> str | None:
+    """Full commit id for an exact id or a unique prefix of at least 7 characters (like git)."""
+    commit_id = (commit_id or "").strip()
+    if store._rows("SELECT 1 FROM commits WHERE id = ?", (commit_id,)):
+        return commit_id
+    if len(commit_id) < 7 or not all(ch in "0123456789abcdef" for ch in commit_id):
+        return None
+    rows = store._rows("SELECT id FROM commits WHERE id LIKE ? LIMIT 2", (commit_id + "%",))
+    return rows[0]["id"] if len(rows) == 1 else None
+
+
 def _commit_row(commit_id: str) -> dict | None:
-    rows = store._rows("SELECT * FROM commits WHERE id = ?", (commit_id,))
+    full = resolve_commit_id(commit_id)
+    rows = store._rows("SELECT * FROM commits WHERE id = ?", (full,)) if full else []
     return rows[0] if rows else None
 
 
@@ -445,6 +457,7 @@ def get_commit(commit_id: str) -> dict | None:
     row = _commit_row(commit_id)
     if not row:
         return None
+    commit_id = row["id"]
     changes = store._rows("SELECT * FROM cell_changes WHERE commit_id = ? ORDER BY rowid", (commit_id,))
     for c in changes:
         c.pop("commit_id", None)
@@ -455,6 +468,7 @@ def get_commit(commit_id: str) -> dict | None:
 
 def commit_diff(a: str, b: str) -> list[dict]:
     """Cell-level changes from commit a to commit b (any two commits, not only parent and child)."""
+    a, b = resolve_commit_id(a) or a, resolve_commit_id(b) or b
     if a == b:
         return []
     return workbook.diff(load_snapshot(a), load_snapshot(b))

@@ -188,3 +188,12 @@ def test_clean_stem_and_branch_suffix():
     assert vcs._clean_stem("Falcon LBO v3 FINAL (2)") == "Falcon LBO"
     assert vcs._branch_suffix("Falcon LBO v3 (DO comments)", "Falcon LBO") == "do-comments"
     assert vcs._branch_suffix("Falcon LBO v4", "Falcon LBO") == ""
+
+
+def test_commit_lookup_accepts_unique_prefix(tmp_path):
+    a = make_model(tmp_path / "Deal LBO v1.xlsx")
+    first = vcs.record_snapshot(a, "falcon", "david@northbeam.com", "2026-10-01T10:00:00")
+    full = first["id"]
+    assert vcs.get_commit(full[:7])["id"] == full
+    assert vcs.resolve_commit_id(full[:6]) is None  # too short to trust
+    assert vcs.resolve_commit_id("zzzzzzz") is None

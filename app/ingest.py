@@ -125,10 +125,19 @@ def ensure_deal(deal_id: str, deal_dir: Path) -> dict:
         tuple(row.values()),
     )
     team = [e for e in info.get("team", []) if isinstance(e, str)]
-    if team:
+    # deal.json seeds the team only when the deal is new or the file itself changed, so staffing
+    # changes made in the governance screen survive every rescan.
+    key = f"{folder}/deal.json"
+    raw = (deal_dir / "deal.json").read_bytes() if (deal_dir / "deal.json").is_file() else b""
+    sha = hashlib.sha256(raw).hexdigest()
+    seen = store._rows("SELECT sha256 FROM files_seen WHERE path = ?", (key,))
+    if team and (not seen or seen[0]["sha256"] != sha):
         store.execute("DELETE FROM deal_members WHERE deal_id = ?", (deal_id,))
         store.executemany("INSERT OR IGNORE INTO deal_members(deal_id, email) VALUES (?,?)",
                           [(deal_id, e) for e in team])
+    if not seen or seen[0]["sha256"] != sha:
+        store.execute("INSERT OR REPLACE INTO files_seen(path, sha256, mtime, kind, doc_id, commit_id) VALUES (?,?,?,?,?,?)",
+                      (key, sha, time.time(), "deal_json", None, None))
     return {**row, "lead": info.get("lead"), "team": team}
 
 
