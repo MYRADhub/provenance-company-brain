@@ -4,6 +4,8 @@ The ACL is always derived from the server-side user record, never from model or 
 so content behind an ethical wall is never retrieved for a user outside it.
 """
 
+from pathlib import Path
+
 from app import store
 from app.config import COLLECTION, HYDRA_DATABASE, hydra
 
@@ -53,10 +55,13 @@ def search(email: str, query: str, deal: str | None = None, max_results: int = 8
             # Not registered in SQLite: deleted, or not yet saved (e.g. a change log for a version
             # the demo has not saved). HydraDB deletes are async, so SQLite decides what exists.
             continue
+        path, url = source_link(doc_id)
         chunks.append(
             {
                 "id": doc_id,
                 "title": doc["title"],
+                "file": path,
+                "url": url,
                 "deal": doc.get("deal_id") or _get(meta, "deal"),
                 "kind": doc.get("kind") or _get(meta, "doc_kind") or _get(c, "source_type"),
                 "date": doc.get("date") or _get(extra, "date"),
@@ -79,3 +84,28 @@ def _to_plain(obj):
     if hasattr(obj, "dict"):
         return obj.dict()
     return str(obj)
+
+
+def source_link(doc_id: str) -> tuple[str | None, str | None]:
+    """Where a brain document came from: (relative file path, link the UI can open)."""
+    if doc_id.startswith("f_commit_"):
+        commit_id = doc_id.removeprefix("f_commit_")
+        rows = store._rows("SELECT file_path FROM commits WHERE id = ?", (commit_id,))
+        return (_relative(rows[0]["file_path"]) if rows else None), f"#commit={commit_id}"
+    if doc_id.startswith("f_model_"):
+        return None, f"#model={doc_id.removeprefix('f_model_')}"
+    rows = store._rows("SELECT path FROM files_seen WHERE doc_id = ?", (doc_id,))
+    if not rows:
+        return None, None
+    return _relative(rows[0]["path"]), f"/files/{doc_id}"
+
+
+def _relative(path: str | None) -> str | None:
+    if not path:
+        return None
+    from app.ingest import IMPORT_ROOT
+
+    try:
+        return str(Path(path).resolve().relative_to(IMPORT_ROOT.resolve()))
+    except ValueError:
+        return path

@@ -231,6 +231,7 @@ Base case returns (operating model v2).
 - EBITDA margin held flat at {pct(V2M['ebitda_margin'])}
 - Exit multiple: {V2M['exit_multiple']:.1f}x FY30 EBITDA
 - Gross IRR: {pct(V2M['irr'])}; MOIC: {V2M['moic']:.2f}x
+- Net debt at exit: {money(EXIT_NET_DEBT)} (the {money(ENTRY_EV - ENTRY_EQUITY)} unitranche less scheduled amortisation and the 50% excess cash sweep; see the Halyard Credit term sheet)
 This clears the fund's 20% gross IRR hurdle.
 
 Key risks.
@@ -338,6 +339,32 @@ Effect: FY26 revenue goes from {money(V2M['fy26_revenue'])} to {money(V3M['fy26_
 Margin and exit multiple are unchanged for now. Happy to walk through it tomorrow.
 
 Priya""",
+    },
+    {
+        "doc_id": "falcon_lender_terms",
+        "title": "Email: Halyard Credit - Falcon unitranche indicative terms",
+        "deal_id": "falcon", "kind": "email", "doc_kind": "email",
+        "date": "2026-10-01", "author_email": "david@northbeam.com", "acl": deal_acl("falcon"),
+        "from": "rachel.kim@halyardcredit.com", "to": ["david@northbeam.com"], "cc": ["priya@northbeam.com"],
+        "body": f"""From: Rachel Kim (Halyard Credit)
+To: David Okafor
+Cc: Priya Shah
+Date: Oct 1 2026, 9:40 AM
+Subject: Falcon - unitranche indicative terms
+
+David,
+
+Following our call, indicative terms for the Acme Freight Systems acquisition financing:
+
+- Facility: {money(ENTRY_EV - ENTRY_EQUITY)} senior secured unitranche, 6-year tenor
+- Pricing: SOFR + 575 bps, 1.0% annual amortisation
+- Excess cash flow sweep: 50%, stepping down to 25% below 3.0x net leverage
+- Covenant: one maintenance test, total net leverage 6.5x stepping down to 5.0x
+
+On your base case cash flows our model has net debt of roughly {money(EXIT_NET_DEBT)} at the end of year five. Happy to share the debt schedule with Priya so it ties to your model.
+
+Best,
+Rachel""",
     },
     {
         "doc_id": "falcon_slack_2026_10_09",

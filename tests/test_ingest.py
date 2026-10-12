@@ -169,7 +169,7 @@ def test_scan_builds_graph_docs_and_references(deals_root, offline):
 
     ids = {i["id"] for i in offline}
     assert all(i.startswith("f_") for i in ids)
-    assert len(result["docs"]) == 18
+    assert len(result["docs"]) == 19
     # every brain document is registered in SQLite with the right wall
     for item in offline:
         doc = store.get_document(item["id"])

@@ -278,6 +278,28 @@ def alert(commit_id: str, user: str):
     return {"pending": result is None, "alert": result}
 
 
+@app.get("/files/{doc_id}")
+def source_file(doc_id: str, user: str):
+    """Open the original file behind a citation. Walls apply exactly as in search."""
+    _require_user(user)
+    doc = store.get_document(doc_id)
+    rows = store._rows("SELECT path FROM files_seen WHERE doc_id = ?", (doc_id,))
+    if not doc or not rows:
+        raise HTTPException(status_code=404, detail="Not found")
+    if doc.get("deal_id") and doc["deal_id"] != "firm" and not store.can_access_deal(user, doc["deal_id"]):
+        governance.log(user, "blocked", f"open file {doc_id}", "blocked")
+        raise HTTPException(status_code=404, detail="Not found")
+    path = Path(rows[0]["path"])
+    path = path if path.is_absolute() else ingest.IMPORT_ROOT / path
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="File no longer on disk")
+    inline = path.suffix.lower() in (".pdf", ".txt", ".md", ".eml")
+    media = {".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8", ".eml": "text/plain; charset=utf-8"}.get(path.suffix.lower())
+    governance.log(user, "open_file", doc["title"])
+    return FileResponse(path, media_type=media, filename=path.name,
+                        content_disposition_type="inline" if inline else "attachment")
+
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

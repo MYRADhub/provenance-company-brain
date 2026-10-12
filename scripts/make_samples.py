@@ -249,6 +249,9 @@ FALCON_MODELS = [
      ["DO: capex nudged to 3.5% per QoE; check churn scenario before IC."]),
 ]
 FALCON_LIVE = ("Falcon LBO v4.xlsx", "2026-10-12T15:30:00", "david@northbeam.com", 0.08, 0.18, 0.03, 9.5, [])
+# Second scripted save for the debugging demo: a fat-fingered input (net debt at exit 40.0 typed as 4.0)
+# that inflates IRR with no documented reason.
+FALCON_LIVE_TYPO = ("Falcon LBO v5.xlsx", "2026-10-12T16:10:00", "priya@northbeam.com", 4.0)
 
 HARBOR_MODELS = [
     ("Harbor operating model v1.xlsx", "2026-10-01T18:30:00", "marcus@northbeam.com", 0.28, 0.22, 0.04, 15.0),
@@ -285,6 +288,13 @@ def build() -> None:
     write_model(LIVE / "Falcon" / "Models" / name, company="Acme Freight Systems", codename="Project Falcon",
                 prepared_by=user_name(author), saved=saved, m=lbo(growth=g, margin=mg, capex_pct=cx,
                                                                   exit_multiple=xm, **FALCON), notes=notes)
+    typo_name, typo_saved, typo_author, typo_debt = FALCON_LIVE_TYPO
+    authors[typo_name] = typo_author
+    write_json(falcon / "_authors.json", authors)
+    write_model(LIVE / "Falcon" / "Models" / typo_name, company="Acme Freight Systems", codename="Project Falcon",
+                prepared_by=user_name(typo_author), saved=typo_saved,
+                m=lbo(growth=g, margin=mg, capex_pct=cx, exit_multiple=xm, **{**FALCON, "exit_net_debt": typo_debt}),
+                notes=notes)
 
     write_docx(falcon / "Diligence" / "Acme Freight - CIM summary.docx", doc_by_id("falcon_cim_summary"),
                "2026-09-15T14:00:00")
@@ -301,6 +311,8 @@ def build() -> None:
                transcript_text(doc_by_id("falcon_mgmt_call_2026_10_06")), "2026-10-06T12:30:00")
     write_text(falcon / "Calls" / "2026-10-07 expert call - freight software market.txt",
                transcript_text(doc_by_id("falcon_expert_call_2026_10_07")), "2026-10-07T16:00:00")
+    write_eml(falcon / "Financing" / "Halyard Credit - Falcon unitranche indicative terms.eml",
+              doc_by_id("falcon_lender_terms"), "2026-10-01T09:40:00")
     write_eml(falcon / "Email" / "RE Falcon model update - growth assumption.eml", doc_by_id("falcon_email_2026_10_08"),
               "2026-10-08T19:10:00")
     slack = doc_by_id("falcon_slack_2026_10_09")

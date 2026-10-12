@@ -1,6 +1,7 @@
 """LLM agent over two sources: SQLite facts (what changed) and the HydraDB brain (why)."""
 
 import json
+import re
 
 from openai import OpenAI
 
@@ -111,12 +112,18 @@ You have two kinds of tools:
 Strong answers join them: take the fact from the database, then find the reason in the brain and cite it.
 
 Rules:
-- Ground every claim in tool results. Cite sources inline by document title in italics, e.g. *Management call - Acme Freight CFO (Oct 6)*.
+- Ground every claim in tool results and say where each fact came from. Tool results give every document and model version a `file` and a `url`.
+  Cite inline as a Markdown link on the document's title, e.g. [CFO call, Oct 6](/files/f_ab12). For a model version link the version, e.g. [Falcon LBO v3, Oct 8](#commit=fd175a3ec1).
+  Always end with a **Sources** section: one bullet per file you used, formatted as `[file name](url)` followed by the folder and a few words on what it told you,
+  e.g. `- [2026-10-06 Acme mgmt call - CFO (transcript).txt](/files/f_ab12) - Falcon/Calls - churn risk at NorthStar and Pallas`. Only list files that tool results actually returned; never invent links.
+- Debugging model issues: when a number moves sharply, diff the versions to find the exact inputs that changed, then check them against the source documents
+  (lender terms, QoE, memos, calls). If an input changed with no documented reason, or disagrees with the documents (for example by 10x, which suggests a typo),
+  say plainly that it looks like an error, name who saved it and when, quote the documented value with its source, and recommend which earlier version to restore.
 - When numbers changed, say old -> new, who changed it and when (e.g. "Priya, Oct 8"), then the reason and its source. Do not show commit hashes, branch slugs, cell references or tool names unless the user asks for them.
 - Information barriers are enforced. If a tool returns "restricted" or a search finds nothing relevant, do not guess or hint at what might exist.
   Say that you have nothing the user is cleared to see on that topic and that, if it relates to a walled deal,
   they should contact {compliance.get('name', 'Compliance')} ({compliance.get('email', '')}). Never confirm or deny that a restricted deal exists.
-- Write for a busy partner who is not technical: lead with a one-sentence answer, then at most 4 short bullets of evidence. No headings for short answers, no tables, bold at most two key numbers. Prefer plain words over jargon. Refer to the current user as "you", never by name.
+- Write for a busy partner who is not technical: lead with a one-sentence answer, then at most 4 short bullets of evidence before the Sources section. No headings for short answers, no tables, bold at most two key numbers. Prefer plain words over jargon. Refer to the current user as "you", never by name.
 - When you notice something the user should act on (stale numbers in a deck, a contradiction with a memo, someone to loop in), end with one line starting with **Next step:**."""
 
 
@@ -126,6 +133,41 @@ def _restricted() -> dict:
         "error": "restricted",
         "message": f"No accessible records. If this relates to a walled deal, contact {c.get('name')} ({c.get('email')}).",
     }
+
+
+LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+
+
+def _verified_links(answer: str, sources: dict[str, dict]) -> tuple[str, list[dict]]:
+    """Keep only links that point at sources the tools returned or at real commits; unlink anything else."""
+    by_url = {s["url"]: s for s in sources.values() if s.get("url")}
+    cited: dict[str, dict] = {}
+
+    def check(m: re.Match) -> str:
+        label, url = m.group(1), m.group(2)
+        if url in by_url:
+            cited.setdefault(url, by_url[url])
+            return m.group(0)
+        if url.startswith("#commit="):
+            commit = vcs.get_commit(url.removeprefix("#commit="))
+            if commit:
+                path, _ = brain.source_link(f"f_commit_{commit['id']}")
+                cited.setdefault(url, {"id": commit["id"], "title": label, "kind": "model version", "file": path, "url": url})
+                return m.group(0)
+        if url.startswith("#model="):
+            return m.group(0)
+        return label
+
+    answer = LINK.sub(check, answer)
+    return answer, list(cited.values())
+
+
+def _with_links(graph: dict) -> dict:
+    for c in graph.get("commits", []):
+        c["file"] = brain._relative(c.get("file_path"))
+        c["url"] = f"#commit={c['id']}"
+        c.pop("file_path", None)
+    return graph
 
 
 def _model_accessible(email: str, model_id: str) -> bool:
@@ -146,7 +188,8 @@ def _run_tool(email: str, name: str, args: dict, sources: dict) -> tuple[dict, s
         res = brain.search(email, args["query"], deal=deal)
         for ch in res["chunks"]:
             if ch["id"] and ch["id"] not in sources:
-                sources[ch["id"]] = {"id": ch["id"], "title": ch["title"], "kind": ch["kind"], "deal": ch["deal"]}
+                sources[ch["id"]] = {"id": ch["id"], "title": ch["title"], "kind": ch["kind"], "deal": ch["deal"],
+                                     "file": ch.get("file"), "url": ch.get("url")}
         titles = list(dict.fromkeys(c["title"] for c in res["chunks"] if c["title"]))
         return res, f"{len(res['chunks'])} passages from {len(titles)} documents" + (
             f": {', '.join(titles[:4])}" if titles else ""
@@ -169,7 +212,7 @@ def _run_tool(email: str, name: str, args: dict, sources: dict) -> tuple[dict, s
     if name == "get_model_graph":
         if not _model_accessible(email, args.get("model_id", "")):
             return _restricted(), "restricted"
-        graph = vcs.graph(args["model_id"])
+        graph = _with_links(vcs.graph(args["model_id"]))
         branches = len(graph.get("branches", []))
         return graph, f"{len(graph.get('commits', []))} commits on {branches} branches"
 
@@ -178,7 +221,12 @@ def _run_tool(email: str, name: str, args: dict, sources: dict) -> tuple[dict, s
         if not (_commit_accessible(email, a) and _commit_accessible(email, b)):
             return _restricted(), "restricted"
         changes = vcs.commit_diff(a, b)
-        return {"changes": changes}, f"{len(changes)} cell changes {a[:7]} -> {b[:7]}"
+        files = {c: brain.source_link(f"f_commit_{c}") for c in (a, b)}
+        return {
+            "from": {"commit": a, "file": files[a][0], "url": files[a][1]},
+            "to": {"commit": b, "file": files[b][0], "url": files[b][1]},
+            "changes": changes,
+        }, f"{len(changes)} cell changes {a[:7]} -> {b[:7]}"
 
     return {"error": f"unknown tool {name}"}, "error"
 
@@ -230,9 +278,7 @@ def run(email: str, messages: list[dict]) -> dict:
     else:
         answer = answer or "I ran out of steps before finishing. Try a narrower question."
 
-    cited = [s for s in sources.values() if s["title"] and s["title"] in answer]
-    if not cited:
-        cited = list(sources.values())[:4]
+    answer, cited = _verified_links(answer, sources)
     return {"answer": answer, "tool_trace": trace, "citations": cited}
 
 
@@ -253,5 +299,6 @@ Write a short proactive alert for me, as a notification a partner reads on their
 - First line: one sentence on what changed and what it does to returns.
 - Then at most 3 bullets: why it changed (with source, or "no reason documented yet"), which documents now use old numbers and who owns them, and any conflict with the IC memo or firm policy.
 - End with one **Next step:** line.
-No headings, no commit hashes, no cell references."""
+No headings, no commit hashes, no cell references. If an input looks like a mistake (no documented reason, or it disagrees with the documents), say so first.
+End with the **Sources** section as usual."""
     return run(email, [{"role": "user", "content": prompt}])

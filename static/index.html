@@ -296,6 +296,12 @@ table.matrix .pn { font-weight: 500; font-size: 13.5px; } table.matrix .pt { fon
   .side, .right { border: none; }
   .msgs { padding: 16px; } .composer, .topbar { padding-left: 16px; padding-right: 16px; }
 }
+.sources .sl a { color: var(--text); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
+.sources .sl a:hover { text-decoration-color: currentColor; }
+.sources .sl .file { display: block; font-size: 11px; color: var(--faint); }
+.md a { color: var(--text); text-decoration: underline; text-decoration-color: var(--color-leaf); text-underline-offset: 3px; }
+.tl-row.flash { animation: rowflash 1.6s ease-out; }
+@keyframes rowflash { 0% { background: var(--accent-soft); } 100% { background: transparent; } }
 </style>
 </head>
 <body>
@@ -364,8 +370,8 @@ const ICON = {
 const PROMPTS = {
   priya: ["Why did FY26 EBITDA drop since the IC memo draft?", "Prep me for Thursday's call with Acme's CFO", "Which documents still use old numbers?"],
   marcus: ["What's our view on exit multiples for logistics deals?", "Tell me about Project Falcon", "Summarize where Harbor stands"],
-  elena: ["What changed in Falcon this week, and does it break the IC memo?", "Why did we pass on Kestrel, and does it apply to Falcon?", "Which documents still use old numbers?"],
-  david: ["Why did revenue growth drop from 12% to 8%?", "What does Elena think about logistics exit multiples?", "Which documents still use old numbers?"],
+  elena: ["Why did IRR jump in the latest version?", "What changed in Falcon this week, and does it break the IC memo?", "Why did we pass on Kestrel, and does it apply to Falcon?", "Which documents still use old numbers?"],
+  david: ["Why did IRR jump in the latest version?", "Why did revenue growth drop from 12% to 8%?", "What does Elena think about logistics exit multiples?", "Which documents still use old numbers?"],
   sam: ["Who has access to Falcon materials?", "What is our information barrier policy?", "Summarize the IC process"],
 };
 const promptsFor = (email) => PROMPTS[String(email || "").split("@")[0]] || ["What deals am I working on?", "What changed recently?", "Summarize the IC process"];
@@ -448,7 +454,7 @@ function sourcesHtml(key, cites, trace) {
   if (!n && !(trace || []).length) return "";
   const open = !!S.openSources[key];
   const body = open ? `<div class="sources">
-      ${n ? `<h5>Sources</h5>${cites.map((c) => `<div class="sl">${ICON.doc}<span>${esc(c.title || c.id)}</span>${c.kind ? `<span class="kind">${esc(String(c.kind).replace(/_/g, " "))}</span>` : ""}</div>`).join("")}` : ""}
+      ${n ? `<h5>Sources</h5>${cites.map((c) => `<div class="sl">${ICON.doc}<span>${c.url ? `<a href="${esc(c.url)}">${esc(c.title || c.id)}</a>` : esc(c.title || c.id)}${c.file ? `<span class="file">${esc(c.file)}</span>` : ""}</span>${c.kind ? `<span class="kind">${esc(String(c.kind).replace(/_/g, " "))}</span>` : ""}</div>`).join("")}` : ""}
       ${(trace || []).length ? `<h5>How I found this</h5>${trace.map((t) => `<div class="step">${stepText(t)}</div>`).join("")}` : ""}
     </div>` : "";
   return `<button class="src-toggle ${open ? "open" : ""}" data-src="${esc(key)}">${ICON.right}${n ? `Sources (${n})` : "How I found this"}</button>${body}`;
@@ -1116,6 +1122,40 @@ try { const t = localStorage.getItem("prov_theme"); if (t) document.documentElem
   const first = S.users.find((u) => u.email === saved) || S.users.find((u) => u.email.startsWith("priya")) || S.users[0];
   if (first) selectUser(first.email);
 })();
+
+/* ---------- citation links: files open with the viewer's identity, versions open in the timeline ---------- */
+document.addEventListener("click", async (e) => {
+  const a = e.target.closest("a[href]");
+  if (!a) return;
+  const href = a.getAttribute("href") || "";
+  if (href.startsWith("/files/")) {
+    e.preventDefault();
+    window.open(`${href}${href.includes("?") ? "&" : "?"}user=${encodeURIComponent(S.user)}`, "_blank", "noopener");
+  } else if (href.startsWith("#commit=")) {
+    e.preventDefault();
+    await focusCommit(href.slice(8));
+  } else if (href.startsWith("#model=")) {
+    e.preventDefault();
+    if (S.models.some((m) => m.id === href.slice(7))) await selectModel(href.slice(7));
+  }
+});
+async function focusCommit(id) {
+  const has = () => S.graph && (S.graph.commits || []).some((c) => c.id === id || c.id.startsWith(id));
+  if (!has()) {
+    for (const m of S.models) {
+      if (m.id === S.model) continue;
+      await selectModel(m.id);
+      if (has()) break;
+    }
+  }
+  if (!has()) { toast("That version is not in the current deal."); return; }
+  const full = S.graph.commits.find((c) => c.id === id || c.id.startsWith(id)).id;
+  S.compare = false; S.sel = [full]; S.showCells = false;
+  renderRight();
+  await loadDiff();
+  const row = document.querySelector(`.tl-row[data-id="${full}"]`);
+  if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1600); }
+}
 </script>
 </body>
 </html>
