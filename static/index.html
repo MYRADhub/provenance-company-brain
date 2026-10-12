@@ -52,7 +52,7 @@ html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--text);
   font: 14px/1.5 "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif; -webkit-font-smoothing: antialiased;
-  display: grid; grid-template-columns: 260px minmax(0, 1fr) 420px; height: 100vh; overflow: hidden;
+  display: grid; grid-template-columns: 240px minmax(0, 1fr) 540px; height: 100vh; overflow: hidden;
 }
 button { font: inherit; cursor: pointer; }
 .side, .right { background: var(--panel); border-color: var(--border); overflow-y: auto; }
@@ -129,7 +129,6 @@ details.trace[open] summary::before { content: "\25BE  "; }
 .btn { border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: var(--radius-sm); padding: 0 16px; min-height: 40px; font-size: 14px; font-weight: 500; transition: opacity var(--transition-micro); }
 .btn:hover:not(:disabled) { opacity: .9; }
 .btn:disabled { opacity: .5; cursor: default; }
-.btn.secondary { background: none; color: var(--accent); }
 .mini-chips { display: flex; gap: 6px; flex-wrap: wrap; max-width: 900px; margin: 0 auto 10px; }
 .mini-chips .chip { font-size: 12px; padding: 4px 10px; box-shadow: none; }
 /* Right panel */
@@ -173,7 +172,47 @@ table.changes td.v { font-family: var(--mono); white-space: nowrap; }
 .section { display: flex; flex-direction: column; gap: 8px; }
 .empty-r { text-align: center; color: var(--muted); padding: 40px 10px; border: 1px dashed var(--border); border-radius: var(--radius-md); font-size: 13px; }
 .notice { font-size: 12px; color: var(--red); background: var(--red-soft); border-radius: 8px; padding: 8px 10px; }
-@media (max-width: 1200px) { body { grid-template-columns: 220px minmax(0,1fr) 360px; } }
+/* Commit graph */
+.ractions { display: flex; gap: 8px; }
+.ractions .btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; font-size: 13px; }
+.btn.secondary { background: var(--panel-2); color: var(--text); border-color: var(--border); box-shadow: var(--shadow-sm); }
+.import { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; background: var(--panel-2); display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow-sm); }
+.import .label { margin: 0; }
+.import input { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; font: inherit; background: var(--bg); color: var(--text); }
+.import input:focus { outline: none; border-color: var(--accent); }
+.import .row { display: flex; gap: 8px; } .import .row .btn { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; }
+.mhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mname { font-weight: 600; font-size: 14px; }
+.msel { font: inherit; font-weight: 600; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 8px; background: var(--panel-2); color: var(--text); max-width: 240px; }
+.graph-wrap { max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-2); box-shadow: var(--shadow-sm); }
+.graph { position: relative; }
+.gsvg { position: absolute; left: 0; top: 0; pointer-events: none; }
+.crows { margin-left: var(--gw); }
+.crow { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 0 10px 0 4px; border-bottom: 1px solid var(--border); cursor: pointer; overflow: hidden; transition: background var(--transition-micro); }
+.crow:last-child { border-bottom: none; }
+.crow:hover { background: var(--accent-soft); }
+.crow.sel { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.crow.fresh { animation: flash 2.4s ease-out; }
+.cl1, .cl2 { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.cl2 { font-size: 11px; color: var(--muted); }
+.hash { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.cmsg { font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ref-head { font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 99px; color: #fff; background: var(--lane); flex: none; }
+.ref-tag { font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); background: var(--bg); flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.av { width: 18px; height: 18px; border-radius: 50%; background: var(--color-mist); color: var(--text); display: inline-grid; place-items: center; font-size: 9px; font-weight: 600; flex: none; }
+.fork { font-style: italic; }
+.qd { font-family: var(--mono); font-size: 10px; color: var(--text); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; overflow: hidden; text-overflow: ellipsis; }
+.node-fresh { animation: pop 1.2s ease-out; transform-origin: center; transform-box: fill-box; }
+@keyframes pop { 0% { transform: scale(2.2); opacity: .2; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+.csel { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; background: var(--panel-2); display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-sm); }
+.cselh { font-size: 13px; } .csel code { font-family: var(--mono); font-size: 11px; }
+.fx { font-family: var(--mono); font-size: 10px; margin-top: 2px; white-space: normal; overflow-wrap: anywhere; }
+#toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 50; max-width: 380px; }
+.toast { background: var(--accent); color: var(--on-accent); padding: 10px 14px; border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); font-size: 13px; transition: opacity .3s, transform .3s; }
+.toast .hash { color: inherit; opacity: .8; }
+.toast.err { background: var(--red); color: #fff; }
+.toast.out { opacity: 0; transform: translateY(6px); }
+@media (max-width: 1200px) { body { grid-template-columns: 210px minmax(0,1fr) 440px; } }
 @media (max-width: 900px) {
   body { grid-template-columns: 1fr; height: auto; overflow: auto; }
   .center { height: auto; min-height: 80vh; }
@@ -222,7 +261,7 @@ table.changes td.v { font-family: var(--mono); white-space: nowrap; }
 <aside class="right" id="right"></aside>
 
 <script>
-const S = { users: [], user: null, me: null, messages: [], busy: false, deal: null, versions: [], selected: [], alert: null, simBusy: false, freshVersion: null };
+const S = { users: [], user: null, me: null, messages: [], busy: false, deal: null, models: [], model: null, graph: null, sel: [], changes: null, stale: null, alert: null, awaitingSave: false, fresh: null, seq: null, alertPolls: {}, importOpen: false, importBusy: false, importPath: "" };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const md = (s) => (window.marked ? marked.parse(String(s ?? ""), { breaks: true }) : "<p>" + esc(s).replace(/\n/g, "<br>") + "</p>");
@@ -283,7 +322,7 @@ const fmtDate = (s) => { if (!s) return ""; const d = new Date(s); return isNaN(
 const nameOf = (email) => (S.users.find((u) => u.email === email) || {}).name || email || "";
 
 /* ---------- trace / citations ---------- */
-const DB_TOOLS = /version|change|stale|history|deals|model|metric|diff/i;
+const DB_TOOLS = /list_models|get_model_graph|diff_commits|find_stale_references|list_my_deals|model|commit|diff|stale|deal/i;
 function traceHtml(trace) {
   if (!trace || !trace.length) return "";
   const steps = trace.map((t, i) => {
@@ -370,134 +409,408 @@ async function ask(text) {
   }
 }
 
-/* ---------- right panel ---------- */
-function versionsWithDeals() { return ((S.me && S.me.deals) || []); }
+/* ---------- right panel: git-style model history ---------- */
+const LANE_COLORS = ["#2563eb", "#059669", "#d97706", "#db2777", "#7c3aed", "#0891b2", "#65a30d", "#dc2626"];
+const ROW_H = 54, LANE_W = 16, GRAPH_PAD = 12;
+const enc = encodeURIComponent;
+const shortId = (id) => String(id || "").slice(0, 7);
+const commitModelId = (c) => c && (c.model_id || (c.model && (c.model.id || c.model)) || null);
+function relTime(s) {
+  if (!s) return "";
+  const d = new Date(s); if (isNaN(d)) return String(s);
+  const sec = (Date.now() - d.getTime()) / 1000, a = Math.abs(sec);
+  const f = (n, u) => `${Math.round(n)} ${u}${Math.round(n) === 1 ? "" : "s"} ${sec >= 0 ? "ago" : "from now"}`;
+  if (a < 60) return "just now";
+  if (a < 3600) return f(a / 60, "min");
+  if (a < 86400) return f(a / 3600, "hr");
+  if (a < 86400 * 14) return f(a / 86400, "day");
+  if (a < 86400 * 60) return f(a / (86400 * 7), "wk");
+  return fmtDate(s);
+}
+
 async function selectDeal(id) {
-  S.deal = id; S.selected = []; S.versions = []; S.changes = null; S.stale = null; S.panelErr = null;
+  S.deal = id; S.models = []; S.model = null; S.graph = null; S.sel = []; S.changes = null; S.stale = null; S.panelErr = null;
   renderDeals(); renderRight();
   if (!id) return;
   const user = S.user;
   try {
-    const [v, st] = await Promise.all([
-      api(`/api/deals/${encodeURIComponent(id)}/versions?user=${encodeURIComponent(user)}`),
-      api(`/api/deals/${encodeURIComponent(id)}/stale?user=${encodeURIComponent(user)}`).catch((e) => ({ error: e.message })),
+    const [m, st] = await Promise.all([
+      api(`/api/deals/${enc(id)}/models?user=${enc(user)}`),
+      api(`/api/deals/${enc(id)}/stale?user=${enc(user)}`).catch((e) => ({ error: e.message })),
     ]);
     if (user !== S.user || id !== S.deal) return;
-    S.versions = (v.versions || []).slice().sort((a, b) => Number(a.version) - Number(b.version));
+    S.models = Array.isArray(m) ? m : (m && m.models) || [];
     S.stale = st.error ? { error: st.error } : st.stale || [];
-    if (S.versions.length >= 2) {
-      const last = S.versions[S.versions.length - 1].version;
-      S.selected = [S.versions[S.versions.length - 2].version, last];
-      await loadChanges();
-    }
+    if (S.models.length) { await selectModel(S.models[0].id, { keepPanel: true }); return; }
   } catch (e) {
     if (user !== S.user) return;
     S.panelErr = e.message;
   }
   renderRight();
 }
-async function loadChanges() {
-  if (!S.selected.length) { S.changes = null; return; }
-  const sorted = S.selected.slice().sort((a, b) => Number(a) - Number(b));
-  let from, to;
-  if (sorted.length === 1) {
-    const idx = S.versions.findIndex((v) => v.version === sorted[0]);
-    if (idx <= 0) { S.changes = { note: "First version: no prior version to compare.", rows: [] }; return; }
-    from = S.versions[idx - 1].version; to = sorted[0];
-  } else { [from, to] = sorted; }
-  try {
-    const r = await api(`/api/deals/${encodeURIComponent(S.deal)}/changes?user=${encodeURIComponent(S.user)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-    S.changes = { from, to, rows: r.changes || [] };
-  } catch (e) { S.changes = { error: e.message, rows: [] }; }
+
+async function selectModel(modelId, opts = {}) {
+  S.model = modelId; S.sel = []; S.changes = null;
+  if (!opts.keepPanel) renderRight();
+  await loadGraph({ selectHead: true });
 }
-async function toggleVersion(v) {
-  const i = S.selected.indexOf(v);
-  if (i >= 0) S.selected.splice(i, 1);
-  else { S.selected.push(v); if (S.selected.length > 2) S.selected.shift(); }
-  await loadChanges(); renderRight();
-}
-async function simulate() {
-  if (S.simBusy || !S.deal) return;
-  S.simBusy = true; S.alert = null; renderRight();
-  const user = S.user, deal = S.deal;
+
+async function loadGraph({ selectHead = false, fresh = null } = {}) {
+  if (!S.model) { renderRight(); return; }
+  const user = S.user, model = S.model;
   try {
-    const r = await api("/api/demo/save-version", { method: "POST", body: JSON.stringify({ user, deal }) });
-    if (user !== S.user) return;
-    S.alert = r.alert || { answer: "Version saved." };
-    S.freshVersion = r.version;
-    S.simBusy = false;
-    await selectDeal(deal);
-    return;
+    const g = await api(`/api/models/${enc(model)}/graph?user=${enc(user)}`);
+    if (user !== S.user || model !== S.model) return;
+    S.graph = normalizeGraph(g);
+    S.panelErr = null;
+    if (fresh) { S.fresh = fresh; S.sel = [fresh]; await loadDiff(); }
+    else if (selectHead && S.graph.commits.length) { S.sel = [S.graph.commits[0].id]; await loadDiff(); }
   } catch (e) {
-    if (user === S.user) S.alert = { answer: e.message, error: true };
+    if (user !== S.user) return;
+    S.panelErr = e.message; S.graph = null;
   }
-  S.simBusy = false; renderRight();
+  renderRight();
 }
-function versionCard(v, prev) {
-  const m = v.metrics || {}, pm = (prev && prev.metrics) || {};
-  const sel = S.selected.includes(v.version);
-  return `<div class="ver ${sel ? "sel" : ""} ${String(S.freshVersion) === String(v.version) ? "fresh" : ""}" data-v="${esc(v.version)}">
-    <div class="top"><span class="vn">v${esc(v.version)}</span><span class="meta">${esc(nameOf(v.author_email))} &middot; ${esc(fmtDate(v.saved_at))}</span></div>
-    ${v.note ? `<div class="note">${esc(v.note)}</div>` : ""}
-    <div class="metrics">${METRICS.map((mm) => `<div class="mt"><div class="ml">${mm.l}</div><div class="mv">${mm.f(m[mm.k])}</div>${prev ? delta(mm, m[mm.k], pm[mm.k]) : ""}</div>`).join("")}</div>
-  </div>`;
+
+function normalizeGraph(g) {
+  g = g || {};
+  const commits = (g.commits || []).filter((c) => c && c.id).map((c) => ({ ...c, tags: c.tags || [] }));
+  // Tags may also come as a top-level list: [{commit_id|commit, title|name|doc_title}]
+  (g.tags || []).forEach((t) => {
+    const cid = t.commit_id || t.commit || t.quoted_commit;
+    const c = commits.find((x) => x.id === cid);
+    if (c) { const label = t.title || t.name || t.doc_title || t.label; if (label && !c.tags.some((x) => (x.title || x.name || x) === label)) c.tags.push(label); }
+  });
+  commits.sort((a, b) => String(b.committed_at || "").localeCompare(String(a.committed_at || "")));
+  const branches = g.branches || [];
+  // Lane per branch: main first, then by first (oldest) appearance.
+  const order = [];
+  commits.slice().reverse().forEach((c) => { const b = c.branch || "main"; if (!order.includes(b)) order.push(b); });
+  branches.forEach((b) => { if (b.name && !order.includes(b.name)) order.push(b.name); });
+  order.sort((a, b) => (a === "main" ? -1 : b === "main" ? 1 : 0));
+  const lane = Object.fromEntries(order.map((b, i) => [b, i]));
+  const heads = {};
+  branches.forEach((b) => { if (b.head_commit) (heads[b.head_commit] = heads[b.head_commit] || []).push(b.name); });
+  if (!branches.length) order.forEach((b) => { const h = commits.find((c) => (c.branch || "main") === b); if (h) (heads[h.id] = heads[h.id] || []).push(b); });
+  const byId = Object.fromEntries(commits.map((c) => [c.id, c]));
+  return { model: g.model || {}, commits, branches, lane, laneCount: Math.max(order.length, 1), heads, byId };
 }
+
+const tagLabel = (t) => (typeof t === "string" ? t : t.title || t.name || t.doc_title || t.label || "");
+
+function graphSvg(G) {
+  const width = GRAPH_PAD * 2 + (G.laneCount - 1) * LANE_W;
+  const height = G.commits.length * ROW_H;
+  const idx = Object.fromEntries(G.commits.map((c, i) => [c.id, i]));
+  const x = (c) => GRAPH_PAD + (G.lane[c.branch || "main"] || 0) * LANE_W;
+  const y = (i) => i * ROW_H + ROW_H / 2;
+  const color = (c) => LANE_COLORS[(G.lane[c.branch || "main"] || 0) % LANE_COLORS.length];
+  let edges = "";
+  G.commits.forEach((c, i) => {
+    const p = c.parent_id && G.byId[c.parent_id];
+    if (!p) return;
+    const pi = idx[p.id], xc = x(c), xp = x(p), yc = y(i), yp = y(pi);
+    const col = color(c);
+    if (xc === xp) edges += `<path d="M${xp} ${yp} L${xc} ${yc}" stroke="${col}" />`;
+    else {
+      const bend = yp - ROW_H;
+      edges += `<path d="M${xp} ${yp} C${xp} ${yp - ROW_H * 0.55} ${xc} ${yp - ROW_H * 0.45} ${xc} ${bend} L${xc} ${yc}" stroke="${col}" />`;
+    }
+  });
+  const nodes = G.commits.map((c, i) => {
+    const sel = S.sel.includes(c.id);
+    return `<circle cx="${x(c)}" cy="${y(i)}" r="${sel ? 6 : 5}" fill="${sel ? color(c) : "var(--panel-2)"}" stroke="${color(c)}" stroke-width="2.5" class="${S.fresh === c.id ? "node-fresh" : ""}" />`;
+  }).join("");
+  return { width, svg: `<svg class="gsvg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true"><g fill="none" stroke-width="2" stroke-linecap="round">${edges}</g>${nodes}</svg>` };
+}
+
+function metricDeltaRow(c) {
+  const p = c.parent_id && S.graph && S.graph.byId[c.parent_id];
+  const m = c.metrics || {}, pm = (p && p.metrics) || {};
+  const cells = METRICS.filter((mm) => m[mm.k] != null).map((mm) => `<div class="mt"><div class="ml">${mm.l}</div><div class="mv">${mm.f(m[mm.k])}</div>${p ? delta(mm, m[mm.k], pm[mm.k]) : ""}</div>`);
+  return cells.length ? `<div class="metrics" style="grid-template-columns:repeat(${cells.length},1fr)">${cells.join("")}</div>` : "";
+}
+
+function commitRows(G) {
+  return G.commits.map((c) => {
+    const col = LANE_COLORS[(G.lane[c.branch || "main"] || 0) % LANE_COLORS.length];
+    const sel = S.sel.includes(c.id);
+    const heads = (G.heads[c.id] || []).map((b) => `<span class="ref-head" style="--lane:${col}">${esc(b)}</span>`).join("");
+    const tags = (c.tags || []).map(tagLabel).filter(Boolean).map((t) => `<span class="ref-tag" title="Pinned by ${esc(t)}">${esc(t)}</span>`).join("");
+    const p = c.parent_id && G.byId[c.parent_id];
+    const forkNote = p && (p.branch || "main") !== (c.branch || "main") ? `<span class="fork">forked from ${esc(p.branch || "main")}</span>` : "";
+    const m = c.metrics || {}, pm = (p && p.metrics) || {};
+    const quick = METRICS.filter((mm) => m[mm.k] != null && p && pm[mm.k] != null && Math.abs(Number(m[mm.k]) - Number(pm[mm.k])) > 1e-9)
+      .slice(0, 2).map((mm) => `<span class="qd">${mm.l} ${mm.f(pm[mm.k])} &rarr; ${mm.f(m[mm.k])}</span>`).join("");
+    return `<div class="crow ${sel ? "sel" : ""} ${S.fresh === c.id ? "fresh" : ""}" data-id="${esc(c.id)}" style="height:${ROW_H}px" title="${esc(c.message || "")}">
+      <div class="cl1"><span class="hash">${esc(shortId(c.id))}</span>${heads}${tags}<span class="cmsg">${esc(c.message || "(no message)")}</span></div>
+      <div class="cl2"><span class="av" title="${esc(nameOf(c.author_email))}">${esc(initials(nameOf(c.author_email)))}</span><span title="${esc(fmtDate(c.committed_at))}">${esc(relTime(c.committed_at))}</span>${forkNote}${quick}</div>
+    </div>`;
+  }).join("");
+}
+
+function graphHtml() {
+  const G = S.graph;
+  if (!G) return `<div class="hint">Loading commit graph...</div>`;
+  if (!G.commits.length) return `<div class="empty-r">No commits for this model yet.</div>`;
+  const { width, svg } = graphSvg(G);
+  return `<div class="graph-wrap"><div class="graph" style="--gw:${width}px">${svg}<div class="crows">${commitRows(G)}</div></div></div>`;
+}
+
+function selectedSummary() {
+  const G = S.graph;
+  if (!G || !S.sel.length) return "";
+  const c = G.byId[S.sel[S.sel.length - 1]];
+  if (!c) return "";
+  return `<div class="csel"><div class="cselh"><span class="hash">${esc(shortId(c.id))}</span> <b>${esc(c.message || "")}</b></div>
+    <div class="hint">${esc(nameOf(c.author_email))} &middot; ${esc(fmtDate(c.committed_at))} &middot; branch <code>${esc(c.branch || "main")}</code>${c.file_path ? ` &middot; ${esc(String(c.file_path).split("/").pop())}` : ""}</div>
+    ${metricDeltaRow(c)}</div>`;
+}
+
+async function loadDiff() {
+  const G = S.graph;
+  if (!G || !S.sel.length) { S.changes = null; return; }
+  let a, b;
+  if (S.sel.length === 1) {
+    const c = G.byId[S.sel[0]];
+    if (!c || !c.parent_id) { S.changes = { note: "Root commit: first time this model was seen.", rows: [] }; return; }
+    a = c.parent_id; b = c.id;
+  } else {
+    const [x, y] = S.sel.map((id) => G.byId[id]).filter(Boolean);
+    if (!x || !y) { S.changes = null; return; }
+    [a, b] = String(x.committed_at) <= String(y.committed_at) ? [x.id, y.id] : [y.id, x.id];
+  }
+  const want = `${a}..${b}`;
+  S.changes = { a, b, loading: true, rows: [] };
+  try {
+    const r = await api(`/api/commits/diff?user=${enc(S.user)}&a=${enc(a)}&b=${enc(b)}`);
+    if (!S.changes || `${S.changes.a}..${S.changes.b}` !== want) return;
+    S.changes = { a, b, rows: Array.isArray(r) ? r : r.changes || [] };
+  } catch (e) { S.changes = { a, b, error: e.message, rows: [] }; }
+}
+
+async function clickCommit(id, multi) {
+  if (multi) {
+    const i = S.sel.indexOf(id);
+    if (i >= 0) S.sel.splice(i, 1); else { S.sel.push(id); if (S.sel.length > 2) S.sel.shift(); }
+  } else S.sel = [id];
+  S.fresh = null;
+  renderRight();
+  await loadDiff(); renderRight();
+}
+
 function changesHtml() {
   const c = S.changes;
-  if (!c) return `<div class="hint">Select a version (or two) to see cell-level changes.</div>`;
+  if (!c) return `<div class="hint">Click a commit to diff it against its parent. Shift- or Cmd-click a second commit to compare any two.</div>`;
+  if (c.loading) return `<div class="loading"><span class="spinner"></span>Diffing cells...</div>`;
   if (c.error) return `<div class="notice">${esc(c.error)}</div>`;
   if (c.note) return `<div class="hint">${esc(c.note)}</div>`;
-  if (!c.rows.length) return `<div class="hint">No cell changes between v${esc(c.from)} and v${esc(c.to)}.</div>`;
-  return `<table class="changes"><thead><tr><th>Cell</th><th>Line item</th><th>Change</th></tr></thead><tbody>${c.rows.map((r) => `
-    <tr><td class="cell">${esc(r.sheet ? r.sheet + "!" : "")}${esc(r.cell)}</td><td>${esc(r.label || "")}</td>
-    <td class="v"><span class="old">${esc(fmtVal(r.old_value))}</span> &rarr; <span class="new">${esc(fmtVal(r.new_value))}</span></td></tr>`).join("")}</tbody></table>`;
+  if (!c.rows.length) return `<div class="hint">No cell changes between ${esc(shortId(c.a))} and ${esc(shortId(c.b))}.</div>`;
+  return `<table class="changes"><thead><tr><th>Cell</th><th>Line item</th><th>Change</th></tr></thead><tbody>${c.rows.map((r) => {
+    const fChanged = (r.old_formula || r.new_formula) && r.old_formula !== r.new_formula;
+    const f = fChanged ? `<div class="fx"><span class="old">${esc(r.old_formula || "(value)")}</span> &rarr; <span class="new">${esc(r.new_formula || "(value)")}</span></div>` : "";
+    return `<tr><td class="cell">${esc(r.sheet ? r.sheet + "!" : "")}${esc(r.cell)}</td><td>${esc(r.label || "")}</td>
+    <td class="v"><span class="old">${esc(fmtVal(r.old_value))}</span> &rarr; <span class="new">${esc(fmtVal(r.new_value))}</span>${f}</td></tr>`;
+  }).join("")}</tbody></table>`;
 }
+
 function staleHtml() {
   const st = S.stale;
   if (st == null) return `<div class="hint">Loading...</div>`;
   if (st.error) return `<div class="notice">${esc(st.error)}</div>`;
   if (!st.length) return `<div><span class="badge-ok">All current</span> <span class="hint">No documents quote outdated numbers.</span></div>`;
+  const ref = (commit, version) => (commit ? `<span class="hash">${esc(shortId(commit))}</span>` : version != null ? `v${esc(version)}` : "");
   return `<div class="stale">${st.map((r) => `<div class="stale-item">
     <div class="tt">${esc(r.doc_title)} <span class="badge-red">Stale</span></div>
-    <div>${esc(String(r.metric || "").replace(/_/g, " "))}: quotes <span class="old">${esc(fmtMetric(r.metric, r.quoted_value))}</span> (v${esc(r.quoted_version)}), latest <span class="new">${esc(fmtMetric(r.metric, r.latest_value))}</span> (v${esc(r.latest_version)})</div>
+    <div>${esc(String(r.metric || "").replace(/_/g, " "))}: quotes <span class="old">${esc(fmtMetric(r.metric, r.quoted_value))}</span> ${ref(r.quoted_commit, r.quoted_version)}, latest <span class="new">${esc(fmtMetric(r.metric, r.latest_value))}</span> ${ref(r.latest_commit, r.latest_version)}</div>
     ${r.owner_email ? `<div class="hint">Owner: ${esc(nameOf(r.owner_email))}</div>` : ""}</div>`).join("")}</div>`;
 }
+
 function alertHtml() {
-  if (S.simBusy) return `<div class="alert-card" style="border-color:var(--border)"><div class="ab"><div class="loading"><span class="spinner"></span>Saving v4, diffing cells, checking the brain for impact...</div></div></div>`;
+  if (S.awaitingSave) return `<div class="alert-card"><div class="ab"><div class="loading"><span class="spinner"></span>File saved. Watching the folder, committing, diffing cells and checking the brain for impact...</div></div></div>`;
   if (!S.alert) return "";
   const a = S.alert;
   return `<div class="alert-card"><div class="ah"><span>${a.error ? "Error" : "Proactive alert"}</span><button class="x" id="closeAlert" aria-label="Dismiss">&times;</button></div>
     <div class="ab"><div class="md">${md(a.answer)}</div>${traceHtml(a.tool_trace)}${citesHtml(a.citations)}</div></div>`;
 }
+
+function importHtml() {
+  if (!S.importOpen) return "";
+  return `<form class="import" id="importForm">
+    <label class="label" for="importPath">Folder to import</label>
+    <input id="importPath" type="text" placeholder="Default: samples/Northbeam Deals" value="${esc(S.importPath || "")}" />
+    <div class="hint">One subfolder per deal (deal.json sets the team); _firm is firm-wide. Excel files become commits; PDFs, Word, email and notes go to the brain with the deal's access rules.</div>
+    <div class="row"><button class="btn" type="submit" ${S.importBusy ? "disabled" : ""}>${S.importBusy ? `<span class="spinner"></span>Importing...` : "Import"}</button>
+    <button class="btn secondary" type="button" id="importCancel">Cancel</button></div></form>`;
+}
+
+const canImport = () => { const u = S.me && S.me.user; return !!u && ["managing_partner", "compliance", "principal"].includes(u.role); };
 function renderRight() {
   const r = $("right");
-  const deals = versionsWithDeals();
   if (!S.me) { r.innerHTML = ""; return; }
+  const deals = (S.me && S.me.deals) || [];
+  const actions = `<div class="ractions">
+      ${canImport() ? `<button class="btn secondary" id="importBtn">Import folder</button>` : ""}
+      ${S.deal ? `<button class="btn" id="saveBtn" ${S.awaitingSave ? "disabled" : ""}>${S.awaitingSave ? `<span class="spinner"></span>Waiting...` : "Simulate a save from Excel"}</button>` : ""}
+    </div>${importHtml()}`;
   if (!deals.length) {
-    r.innerHTML = `<div class="rhead"><h3>Model history</h3></div><div class="empty-r">No deal models visible to you.<br><span class="hint">Model history is restricted to deal team members.</span></div>`;
-    return;
+    r.innerHTML = `<div class="rhead"><h3>Model history</h3></div>${actions}<div class="empty-r">No deal models visible to you.<br><span class="hint">Model history is restricted to deal team members.</span></div>`;
+    bindRight(); return;
   }
   const deal = deals.find((d) => d.id === S.deal);
   let body;
   if (S.panelErr) body = `<div class="notice">${esc(S.panelErr)}</div>`;
-  else if (!S.versions.length) body = `<div class="empty-r">No model versions for this deal yet.</div>`;
-  else body = `
-    <div class="section"><div class="label">Versions <span class="hint" style="text-transform:none;letter-spacing:0">&middot; click one or two to compare</span></div>
-      <div class="timeline">${S.versions.slice().reverse().map((v) => versionCard(v, S.versions[S.versions.findIndex((x) => x.version === v.version) - 1])).join("")}</div></div>
-    <div class="section"><div class="label">Cell-level changes${S.changes && S.changes.from != null ? ` &middot; v${esc(S.changes.from)} &rarr; v${esc(S.changes.to)}` : ""}</div>${changesHtml()}</div>
+  else if (!S.models.length) body = `<div class="empty-r">No financial models imported for this deal yet.<br><span class="hint">Import a folder or save an Excel model into it.</span></div>`;
+  else {
+    const G = S.graph;
+    const sel = S.models.length > 1
+      ? `<select id="modelSel" class="msel">${S.models.map((m) => `<option value="${esc(m.id)}" ${m.id === S.model ? "selected" : ""}>${esc(m.name || m.id)}</option>`).join("")}</select>`
+      : `<div class="mname">${esc(S.models[0].name || S.models[0].id)}</div>`;
+    const counts = G ? `${G.commits.length} commit${G.commits.length === 1 ? "" : "s"} &middot; ${G.laneCount} branch${G.laneCount === 1 ? "" : "es"}` : "";
+    const rangeLabel = S.changes && S.changes.a ? ` &middot; <span class="hash">${esc(shortId(S.changes.a))}</span>..<span class="hash">${esc(shortId(S.changes.b))}</span>` : "";
+    body = `
+    <div class="section"><div class="mhead">${sel}<span class="hint">${counts}</span></div>
+      ${graphHtml()}
+      <div class="hint">Click a commit to diff against its parent &middot; Shift/Cmd-click two to compare</div></div>
+    ${selectedSummary()}
+    <div class="section"><div class="label">Cell-level changes${rangeLabel}</div>${changesHtml()}</div>
     <div class="section"><div class="label">Stale references</div>${staleHtml()}</div>`;
-  const canSim = S.deal === "falcon";
+  }
   r.innerHTML = `<div class="rhead"><h3>Model history</h3><span class="sub">${deal ? esc(deal.codename) + " &middot; " + esc(deal.company) : ""}</span></div>
-    ${canSim ? `<button class="btn sim" id="simBtn" ${S.simBusy ? "disabled" : ""}>${S.simBusy ? `<span class="spinner"></span>Saving...` : "Simulate: David saves v4"}</button>` : ""}
-    ${alertHtml()}${body}`;
-  r.querySelectorAll(".ver").forEach((el) => el.addEventListener("click", () => toggleVersion(isNaN(Number(el.dataset.v)) ? el.dataset.v : Number(el.dataset.v))));
-  const sb = $("simBtn"); if (sb) sb.addEventListener("click", simulate);
+    ${actions}${alertHtml()}${body}`;
+  bindRight();
+}
+
+function bindRight() {
+  const r = $("right");
+  r.querySelectorAll(".crow").forEach((el) => el.addEventListener("click", (e) => clickCommit(el.dataset.id, e.shiftKey || e.metaKey || e.ctrlKey)));
+  const ms = $("modelSel"); if (ms) ms.addEventListener("change", () => selectModel(ms.value));
+  const ib = $("importBtn"); if (ib) ib.addEventListener("click", () => { S.importOpen = !S.importOpen; renderRight(); const p = $("importPath"); if (p) p.focus(); });
+  const ic = $("importCancel"); if (ic) ic.addEventListener("click", () => { S.importOpen = false; renderRight(); });
+  const f = $("importForm"); if (f) f.addEventListener("submit", (e) => { e.preventDefault(); runImport($("importPath").value); });
+  const sb = $("saveBtn"); if (sb) sb.addEventListener("click", simulateSave);
   const ca = $("closeAlert"); if (ca) ca.addEventListener("click", () => { S.alert = null; renderRight(); });
 }
 
+/* ---------- import / simulated save / live events ---------- */
+const countOf = (v) => (Array.isArray(v) ? v.length : typeof v === "number" ? v : v ? Object.keys(v).length : 0);
+async function runImport(path) {
+  if (S.importBusy) return;
+  S.importPath = path; S.importBusy = true; renderRight();
+  const user = S.user;
+  try {
+    const body = { user }; if (String(path || "").trim()) body.path = path.trim();
+    const r = await api("/api/import", { method: "POST", body: JSON.stringify(body) });
+    toast(`Imported: ${countOf(r.commits)} new commit${countOf(r.commits) === 1 ? "" : "s"}, ${countOf(r.docs)} document${countOf(r.docs) === 1 ? "" : "s"}${countOf(r.skipped) ? `, ${countOf(r.skipped)} unchanged/skipped` : ""}.`);
+    S.importOpen = false;
+    if (user === S.user) await refreshMe();
+  } catch (e) { toast("Import failed: " + e.message, "err"); }
+  S.importBusy = false; renderRight();
+}
+
+async function refreshMe() {
+  const user = S.user;
+  try { const me = await api(`/api/me?user=${enc(user)}`); if (user !== S.user) return; S.me = me; } catch (_) { return; }
+  renderTop(); renderDeals();
+  const deals = S.me.deals || [];
+  if (!deals.some((d) => d.id === S.deal)) { const def = deals.find((d) => d.id === "falcon") || deals[0]; await selectDeal(def ? def.id : null); }
+  else await selectDeal(S.deal);
+}
+
+async function simulateSave() {
+  if (S.awaitingSave || !S.deal) return;
+  S.awaitingSave = true; S.alert = null; renderRight();
+  const user = S.user;
+  clearTimeout(S.saveTimer);
+  S.saveTimer = setTimeout(() => { if (S.awaitingSave) { S.awaitingSave = false; toast("Still processing the save; the alert will appear when ready."); renderRight(); } }, 120000);
+  try {
+    const r = await api("/api/demo/save", { method: "POST", body: JSON.stringify({ user, deal: S.deal }) });
+    const saved = r && (r.saved || r.file || r.path); const name = saved ? String(saved).split("/").pop() : "the model";
+    toast(`Saved ${name} into the deal folder. Watching for the commit...`);
+    if (r && r.alert) { S.awaitingSave = false; S.alert = r.alert; }
+  } catch (e) {
+    S.awaitingSave = false;
+    if (user === S.user) S.alert = { answer: e.message, error: true };
+  }
+  renderRight();
+}
+
+async function pollEvents() {
+  if (!S.user || S.polling) return;
+  S.polling = true;
+  const user = S.user;
+  try {
+    const priming = S.seq == null;
+    const r = await api(`/api/events?user=${enc(user)}&since=${enc(S.seq == null ? 0 : S.seq)}`);
+    if (user !== S.user) return;
+    if (r && r.seq != null) S.seq = r.seq;
+    const events = (r && r.events) || [];
+    if (!priming) for (const ev of events) await handleEvent(ev);
+    else if (r && r.seq == null && events.length) S.seq = Math.max(...events.map((e) => Number(e.seq) || 0));
+  } catch (_) { /* backend may not expose events yet */ }
+  finally { S.polling = false; }
+}
+
+async function handleEvent(ev) {
+  if (!ev) return;
+  const c = ev.commit || (ev.type === "commit" ? ev : null);
+  const alert = ev.alert || (c && c.alert);
+  if (c) {
+    const cid = c.id || c.commit_id;
+    const mid = commitModelId(c) || ev.model_id;
+    const branch = c.branch ? ` on ${c.branch}` : "";
+    toast(`New commit <span class="hash">${esc(shortId(cid))}</span>${esc(branch)}: ${esc(c.message || "model saved")}`, "", true);
+    const dealId = c.deal_id || ev.deal_id;
+    if (mid && mid === S.model) await loadGraph({ fresh: cid });
+    else if (!dealId || dealId === S.deal) { await selectDeal(S.deal); if (cid && S.graph && S.graph.byId[cid]) { S.fresh = cid; renderRight(); } }
+  } else if (ev.type === "doc") {
+    toast(`New document in the brain: ${esc(ev.title || (ev.doc && ev.doc.title) || ev.doc_id || "")}`, "", true);
+  }
+  if (!alert && c && ev.alert_pending) {
+    const cid = c.id || c.commit_id;
+    if (S.awaitingSave || !S.alertPolls[cid]) pollAlert(cid, S.user);
+  }
+  if (alert) showAlert(alert);
+  else if (c && S.awaitingSave) renderRight();
+}
+
+async function pollAlert(cid, user) {
+  if (S.alertPolls[cid]) return;
+  S.alertPolls[cid] = true;
+  for (let i = 0; i < 60 && user === S.user; i++) {
+    await new Promise((res) => setTimeout(res, 3000));
+    if (user !== S.user) break;
+    let r = null;
+    try { r = await api(`/api/alerts/${enc(cid)}?user=${enc(user)}`); } catch (_) { break; }
+    if (r && !r.pending && r.alert) { if (user === S.user) await showAlert(r.alert); break; }
+  }
+  delete S.alertPolls[cid];
+}
+
+async function showAlert(alert) {
+  {
+    S.awaitingSave = false; clearTimeout(S.saveTimer);
+    S.alert = alert; renderRight();
+    toast("Proactive alert: the agent assessed the impact of the new commit.");
+    const s = await api(`/api/deals/${enc(S.deal)}/stale?user=${enc(S.user)}`).catch(() => null);
+    if (s) { S.stale = s.stale || []; renderRight(); }
+  }
+}
+
+function toast(msg, kind = "", isHtml = false) {
+  let box = $("toasts");
+  if (!box) { box = document.createElement("div"); box.id = "toasts"; document.body.appendChild(box); }
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.innerHTML = isHtml ? msg : esc(msg);
+  box.appendChild(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 300); }, 6000);
+}
+setInterval(pollEvents, 3000);
+
 /* ---------- user switching ---------- */
 async function selectUser(email) {
-  S.user = email; S.messages = []; S.busy = false; S.me = null; S.alert = null; S.deal = null; S.versions = []; S.freshVersion = null;
+  S.user = email; S.messages = []; S.busy = false; S.me = null; S.alert = null; S.deal = null; S.models = []; S.model = null; S.graph = null; S.sel = []; S.changes = null; S.fresh = null; S.awaitingSave = false; S.seq = null; S.alertPolls = {};
   try { localStorage.setItem("prov_user", email); } catch (_) {}
   renderUsers(); renderMsgs();
   try {

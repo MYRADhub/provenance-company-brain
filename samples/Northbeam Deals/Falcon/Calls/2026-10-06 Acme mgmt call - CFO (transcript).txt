@@ -1,0 +1,32 @@
+Project Falcon - management call with CFO Tom Becker
+Date: 2026-10-06
+Participants: David Okafor, Priya Shah, Tom Becker (Acme CFO), Linda Marsh (Acme CEO)
+
+Management call transcript - Acme Freight Systems. Oct 6 2026, 10:00 PT. Recorded and transcribed; edited for length.
+Attendees: David Okafor, Priya Shah (Northbeam); Tom Becker, CFO; Linda Marsh, CEO (joined for the second half).
+
+David: Thanks for making time, Tom. We want to walk through Q3 and the FY26 renewal book.
+
+Tom Becker: Sure. Q3 was softer than we planned. New bookings came in at $2.1M against a $3.0M plan. Some of that is the pull-forward into Q4 last year that your QoE team already found, and some is longer enterprise sales cycles. Shippers are delaying software decisions while freight volumes are weak.
+
+Priya: How does the renewal book look for FY26?
+
+Tom Becker: Mid-market renewals look normal, about 93% logo retention. I want to be upfront on two enterprise accounts. NorthStar Grocers issued an RFP last month, and we hear they are evaluating bringing transportation planning in-house on their ERP. Pallas Retail closed its merger with Corvid Stores in August, and their new procurement team told us they are consolidating onto Corvid's incumbent TMS. They have signalled they do not intend to renew when the contract ends in Q1.
+
+David: What is the combined exposure?
+
+Tom Becker: Together about 9% of ARR, roughly $4.1M. NorthStar is about $2.3M and Pallas about $1.8M.
+
+Priya: What odds do you put on keeping them?
+
+Tom Becker: Pallas I would treat as gone. NorthStar maybe fifty-fifty; we are offering a multi-year discount to stay.
+
+Linda Marsh: I want to add context. Our mid-market pipeline is the strongest it has been, up 30% on last year. But I would not pretend the enterprise segment is not under pressure right now.
+
+David: Has this changed your FY26 outlook?
+
+Tom Becker: Our internal FY26 plan now has recurring revenue growth in the high single digits, not the mid-teens in the CIM. We would rather tell you now than have you find it in confirmatory diligence.
+
+David: Appreciated. We will reflect it in our model.
+
+Action items: Priya to rerun the model with the enterprise churn scenario. David to brief Elena before IC.

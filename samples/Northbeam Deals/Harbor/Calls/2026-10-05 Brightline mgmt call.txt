@@ -1,0 +1,17 @@
+Project Harbor - management call with CEO Raj Mehta
+Date: 2026-10-05
+Participants: Elena Ruiz, Marcus Lee, Raj Mehta (Brightline CEO)
+
+Management call - Brightline Health. Oct 5 2026. Notes by Marcus Lee.
+
+Raj Mehta (CEO) on growth: dermatology launched in Q2 and already has 140 clinics. Imaging is the next vertical.
+
+Integrations: the Epic App Orchard integration is certified; Athena is in beta and due in Q1.
+
+Churn: logo churn is about 6% a year, mostly very small clinics closing. No enterprise concentration.
+
+Security: SOC 2 Type II clean; a HIPAA risk assessment is scheduled for November.
+
+Elena asked about pricing: per-provider pricing with an 8% list increase this year, accepted by most customers.
+
+Action: Marcus to build the base case at 25% growth and test the exit multiple range.

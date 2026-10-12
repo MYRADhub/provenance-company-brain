@@ -1,9 +1,9 @@
-"""SQLite: the hard facts. Users, deals, walls, model versions, cell diffs, metrics."""
+"""SQLite: the hard facts. Users, deals, walls, documents; model history tables live here too (see app/vcs.py)."""
 import json
 import sqlite3
 from contextlib import contextmanager
 
-from app.config import DATA_DIR, DB_PATH
+from app import config
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users(email TEXT PRIMARY KEY, name TEXT, title TEXT, role TEXT);
@@ -11,24 +11,31 @@ CREATE TABLE IF NOT EXISTS deals(id TEXT PRIMARY KEY, codename TEXT, company TEX
 CREATE TABLE IF NOT EXISTS deal_members(deal_id TEXT, email TEXT, PRIMARY KEY(deal_id, email));
 CREATE TABLE IF NOT EXISTS documents(doc_id TEXT PRIMARY KEY, title TEXT, deal_id TEXT, kind TEXT, date TEXT,
     author_email TEXT, acl_json TEXT);
-CREATE TABLE IF NOT EXISTS model_versions(deal_id TEXT, version INTEGER, file_path TEXT, author_email TEXT,
-    saved_at TEXT, note TEXT, PRIMARY KEY(deal_id, version));
-CREATE TABLE IF NOT EXISTS cell_changes(deal_id TEXT, from_version INTEGER, to_version INTEGER, sheet TEXT,
-    cell TEXT, label TEXT, old_value TEXT, new_value TEXT);
-CREATE TABLE IF NOT EXISTS key_metrics(deal_id TEXT, version INTEGER, metric TEXT, value REAL,
-    PRIMARY KEY(deal_id, version, metric));
-CREATE TABLE IF NOT EXISTS doc_references(doc_id TEXT, doc_title TEXT, deal_id TEXT, metric TEXT,
-    quoted_value REAL, quoted_version INTEGER, owner_email TEXT);
+CREATE TABLE IF NOT EXISTS models(id TEXT PRIMARY KEY, deal_id TEXT, name TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS commits(id TEXT PRIMARY KEY, model_id TEXT, branch TEXT, parent_id TEXT,
+    author_email TEXT, committed_at TEXT, message TEXT, file_path TEXT, file_mtime REAL);
+CREATE TABLE IF NOT EXISTS branches(model_id TEXT, name TEXT, head_commit TEXT, file_path TEXT,
+    PRIMARY KEY(model_id, name));
+CREATE TABLE IF NOT EXISTS cell_changes(commit_id TEXT, sheet TEXT, cell TEXT, label TEXT, old_value TEXT,
+    new_value TEXT, old_formula TEXT, new_formula TEXT);
+CREATE TABLE IF NOT EXISTS model_metric_cells(model_id TEXT, metric TEXT, sheet TEXT, cell TEXT,
+    PRIMARY KEY(model_id, metric));
+CREATE TABLE IF NOT EXISTS commit_metrics(commit_id TEXT, metric TEXT, value REAL, PRIMARY KEY(commit_id, metric));
+CREATE TABLE IF NOT EXISTS doc_references(doc_id TEXT, doc_title TEXT, deal_id TEXT, model_id TEXT, metric TEXT,
+    quoted_value REAL, quoted_commit TEXT, owner_email TEXT);
+CREATE TABLE IF NOT EXISTS files_seen(path TEXT PRIMARY KEY, sha256 TEXT, mtime REAL, kind TEXT, doc_id TEXT,
+    commit_id TEXT);
 """
 
-TABLES = ["users", "deals", "deal_members", "documents", "model_versions", "cell_changes",
-          "key_metrics", "doc_references"]
+TABLES = ["users", "deals", "deal_members", "documents", "models", "commits", "branches", "cell_changes",
+          "model_metric_cells", "commit_metrics", "doc_references", "files_seen",
+          "model_versions", "key_metrics"]
 
 
 @contextmanager
 def connect():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    config.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -99,85 +106,6 @@ def deal_team(deal_id: str) -> list[dict]:
         "SELECT u.* FROM users u JOIN deal_members m ON m.email = u.email WHERE m.deal_id = ? ORDER BY u.rowid",
         (deal_id,),
     )
-
-
-# ------------------------------------------------------------------- versions
-
-def get_metrics(deal_id: str, version: int | None = None) -> dict:
-    if version is None:
-        version = latest_version(deal_id)
-        if version is None:
-            return {}
-    rows = _rows("SELECT metric, value FROM key_metrics WHERE deal_id = ? AND version = ?", (deal_id, version))
-    return {r["metric"]: r["value"] for r in rows}
-
-
-def latest_version(deal_id: str) -> int | None:
-    rows = _rows("SELECT MAX(version) AS v FROM model_versions WHERE deal_id = ?", (deal_id,))
-    return rows[0]["v"] if rows and rows[0]["v"] is not None else None
-
-
-def list_versions(deal_id: str) -> list[dict]:
-    versions = _rows(
-        "SELECT version, file_path, author_email, saved_at, note FROM model_versions WHERE deal_id = ? ORDER BY version",
-        (deal_id,),
-    )
-    for v in versions:
-        v["metrics"] = get_metrics(deal_id, v["version"])
-    return versions
-
-
-def _decode(value):
-    if value is None:
-        return None
-    try:
-        return json.loads(value)
-    except (TypeError, ValueError):
-        return value
-
-
-def get_changes(deal_id: str, from_v: int, to_v: int) -> list[dict]:
-    """Net cell-level changes from from_v to to_v, collapsing intermediate steps."""
-    if from_v == to_v:
-        return []
-    lo, hi = sorted((from_v, to_v))
-    rows = _rows(
-        "SELECT * FROM cell_changes WHERE deal_id = ? AND from_version >= ? AND to_version <= ? "
-        "ORDER BY to_version, rowid",
-        (deal_id, lo, hi),
-    )
-    net: dict[tuple, dict] = {}
-    for r in rows:
-        key = (r["sheet"], r["cell"])
-        if key not in net:
-            net[key] = {"sheet": r["sheet"], "cell": r["cell"], "label": r["label"],
-                        "old_value": _decode(r["old_value"]), "new_value": _decode(r["new_value"]),
-                        "changed_in": [r["to_version"]]}
-        else:
-            net[key]["new_value"] = _decode(r["new_value"])
-            net[key]["changed_in"].append(r["to_version"])
-    changes = [c for c in net.values() if c["old_value"] != c["new_value"]]
-    if from_v > to_v:
-        for c in changes:
-            c["old_value"], c["new_value"] = c["new_value"], c["old_value"]
-    for c in changes:
-        c["from_version"], c["to_version"] = from_v, to_v
-    return changes
-
-
-def stale_references(deal_id: str) -> list[dict]:
-    latest = latest_version(deal_id)
-    if latest is None:
-        return []
-    metrics = get_metrics(deal_id, latest)
-    refs = _rows("SELECT * FROM doc_references WHERE deal_id = ? ORDER BY doc_id, rowid", (deal_id,))
-    stale = []
-    for r in refs:
-        current = metrics.get(r["metric"])
-        if current is None or abs(current - r["quoted_value"]) < 1e-6:
-            continue
-        stale.append({**r, "latest_value": current, "latest_version": latest})
-    return stale
 
 
 def get_document(doc_id: str) -> dict | None:

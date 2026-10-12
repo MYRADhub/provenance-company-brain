@@ -4,7 +4,7 @@ import json
 
 from openai import OpenAI
 
-from app import brain, store
+from app import brain, store, vcs
 from app.config import LLM_MODEL
 
 TODAY = "Monday, October 12, 2026"
@@ -39,11 +39,8 @@ TOOLS = [
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
-        "name": "get_model_history",
-        "description": (
-            "Structured facts from the database: every saved version of a deal's financial model with author, "
-            "timestamp and key metrics (revenue growth, EBITDA margin, FY26 revenue and EBITDA, exit multiple, IRR, MOIC)."
-        ),
+        "name": "list_models",
+        "description": "List the financial models (Excel lineages) in a deal, with their branches, commit counts and head commits.",
         "input_schema": {
             "type": "object",
             "properties": {"deal_id": {"type": "string"}},
@@ -52,27 +49,37 @@ TOOLS = [
         },
     },
     {
-        "name": "get_model_changes",
+        "name": "get_model_graph",
         "description": (
-            "Cell-level diff between two versions of a deal's financial model (sheet, cell, label, old and new value). "
+            "Structured facts from the database: the git-style commit graph of one model. Every commit has a short hash, "
+            "parent, branch (one per file), author, timestamp, one-line message, key metrics (revenue growth, EBITDA margin, "
+            "FY26 revenue and EBITDA, exit multiple, IRR, MOIC) and tags (documents that quoted that commit)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"model_id": {"type": "string"}},
+            "required": ["model_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "diff_commits",
+        "description": (
+            "Cell-level diff between any two commits of the same model (sheet, cell, label, old and new value and formula). "
             "Tells you exactly what changed, but not why; use search_brain for the why."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {
-                "deal_id": {"type": "string"},
-                "from_version": {"type": "integer"},
-                "to_version": {"type": "integer"},
-            },
-            "required": ["deal_id", "from_version", "to_version"],
+            "properties": {"from_commit": {"type": "string"}, "to_commit": {"type": "string"}},
+            "required": ["from_commit", "to_commit"],
             "additionalProperties": False,
         },
     },
     {
         "name": "find_stale_references",
         "description": (
-            "Find documents (IC memos, decks) that quote a model metric whose value has since changed in the latest "
-            "model version. Returns quoted value, quoted version, latest value and the document owner."
+            "Find documents (IC memos, decks) that quote a model metric whose value has since changed on the model's main "
+            "branch. Returns quoted value, the commit it was based on, latest value and the document owner."
         ),
         "input_schema": {
             "type": "object",
@@ -99,13 +106,13 @@ Deals this user is cleared for:
 {deal_lines}
 
 You have two kinds of tools:
-- Database tools (get_model_history, get_model_changes, find_stale_references, list_my_deals) return hard facts: what changed, when, by whom.
+- Database tools (list_my_deals, list_models, get_model_graph, diff_commits, find_stale_references) return hard facts: the git-style history of every Excel model -- what changed, in which commit, on which branch, when, by whom.
 - search_brain returns unstructured knowledge: the reasons, context, decisions and people behind those facts.
 Strong answers join them: take the fact from the database, then find the reason in the brain and cite it.
 
 Rules:
 - Ground every claim in tool results. Cite sources inline by document title in italics, e.g. *Management call - Acme Freight CFO (Oct 6)*.
-- When numbers changed, give old -> new values, the version, the author and the date, then the reason with its source.
+- When numbers changed, give old -> new values, the short commit hash and branch, the author and the date, then the reason with its source.
 - Information barriers are enforced. If a tool returns "restricted" or a search finds nothing relevant, do not guess or hint at what might exist.
   Say that you have nothing the user is cleared to see on that topic and that, if it relates to a walled deal,
   they should contact {compliance.get('name', 'Compliance')} ({compliance.get('email', '')}). Never confirm or deny that a restricted deal exists.
@@ -119,6 +126,16 @@ def _restricted() -> dict:
         "error": "restricted",
         "message": f"No accessible records. If this relates to a walled deal, contact {c.get('name')} ({c.get('email')}).",
     }
+
+
+def _model_accessible(email: str, model_id: str) -> bool:
+    model = next((m for d in store.accessible_deals(email) for m in vcs.list_models(d["id"]) if m["id"] == model_id), None)
+    return model is not None
+
+
+def _commit_accessible(email: str, commit_id: str) -> bool:
+    commit = vcs.get_commit(commit_id) if commit_id else None
+    return bool(commit) and _model_accessible(email, commit["model_id"])
 
 
 def _run_tool(email: str, name: str, args: dict, sources: dict) -> tuple[dict, str]:
@@ -139,19 +156,29 @@ def _run_tool(email: str, name: str, args: dict, sources: dict) -> tuple[dict, s
         deals = store.accessible_deals(email)
         return {"deals": deals}, f"{len(deals)} deals"
 
-    deal_id = args.get("deal_id", "")
-    if not store.can_access_deal(email, deal_id):
-        return _restricted(), "restricted"
-
-    if name == "get_model_history":
-        versions = store.list_versions(deal_id)
-        return {"deal_id": deal_id, "versions": versions}, f"{len(versions)} versions"
-    if name == "get_model_changes":
-        changes = store.get_changes(deal_id, int(args["from_version"]), int(args["to_version"]))
-        return {"changes": changes}, f"{len(changes)} cell changes v{args['from_version']} -> v{args['to_version']}"
-    if name == "find_stale_references":
-        stale = store.stale_references(deal_id)
+    if name in ("list_models", "find_stale_references"):
+        deal_id = args.get("deal_id", "")
+        if not store.can_access_deal(email, deal_id):
+            return _restricted(), "restricted"
+        if name == "list_models":
+            models = vcs.list_models(deal_id)
+            return {"models": models}, f"{len(models)} models"
+        stale = vcs.stale_references(deal_id)
         return {"stale": stale}, f"{len(stale)} stale references"
+
+    if name == "get_model_graph":
+        if not _model_accessible(email, args.get("model_id", "")):
+            return _restricted(), "restricted"
+        graph = vcs.graph(args["model_id"])
+        branches = len(graph.get("branches", []))
+        return graph, f"{len(graph.get('commits', []))} commits on {branches} branches"
+
+    if name == "diff_commits":
+        a, b = args.get("from_commit", ""), args.get("to_commit", "")
+        if not (_commit_accessible(email, a) and _commit_accessible(email, b)):
+            return _restricted(), "restricted"
+        changes = vcs.commit_diff(a, b)
+        return {"changes": changes}, f"{len(changes)} cell changes {a[:7]} -> {b[:7]}"
 
     return {"error": f"unknown tool {name}"}, "error"
 
@@ -205,19 +232,23 @@ def run(email: str, messages: list[dict]) -> dict:
     return {"answer": answer, "tool_trace": trace, "citations": cited}
 
 
-def proactive_alert(email: str, deal_id: str, saved: dict) -> dict:
-    """After a new model version lands, have the agent assess its impact for this user."""
+def proactive_alert(email: str, commit: dict) -> dict:
+    """After a new commit lands (a model file was saved), have the agent assess its impact for this user."""
     changes = "\n".join(
-        f"- {c['sheet']}!{c['cell']} {c['label']}: {c['old_value']} -> {c['new_value']}" for c in saved.get("changes", [])
+        f"- {c['sheet']}!{c['cell']} {c.get('label') or ''}: {c.get('old_value')} -> {c.get('new_value')}"
+        for c in (commit.get("changes") or [])[:40]
     )
-    prompt = f"""[Automated trigger] Version v{saved['version']} of the {deal_id} model was just saved by {saved.get('author')} at {saved.get('saved_at')}.
-Cell changes versus the prior version:
+    model = commit.get("model") or {}
+    prompt = f"""[Automated trigger] A model file was just saved. New commit {commit['id']} on branch '{commit.get('branch')}' of
+model '{model.get('name', commit.get('model_id'))}' (model_id {commit.get('model_id')}, deal {model.get('deal_id', '')}), parent {commit.get('parent_id')},
+by {commit.get('author_email')} at {commit.get('committed_at')}. Commit message: {commit.get('message')}
+Cell changes versus the parent:
 {changes or '- none detected'}
 
 Write a short proactive alert for me:
-1. What changed and the impact on returns (use the model history).
-2. Why it changed, with the source from the brain.
+1. What changed and the impact on returns (use the model graph).
+2. Why it changed, with the source from the brain (if no reason is documented yet, say so -- that is itself a finding).
 3. Which documents now quote stale numbers and who owns them.
-4. Any conflict with the IC memo or firm policy, and who should be looped in before IC.
+4. Any conflict with the IC memo or firm policy, and who should be looped in.
 Keep it tight; this is a notification, not a report."""
     return run(email, [{"role": "user", "content": prompt}])

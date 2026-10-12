@@ -1,0 +1,21 @@
+Project Falcon - customer reference call, Ridgeway Foods
+Date: 2026-09-25
+Participants: Priya Shah, Dana Whitfield (Ridgeway Foods, Director of Logistics)
+
+Customer reference call - Ridgeway Foods. Sep 25 2026. Notes by Priya Shah.
+
+Ridgeway is a regional food distributor, about 40 trucks plus brokered loads, Acme customer for four years.
+
+Priya: Why did you choose Acme over the larger TMS vendors?
+Dana Whitfield: Implementation took ten weeks, not nine months. The carrier rate management module paid for itself in the first year; we cut spot freight spend by about 7%.
+
+Priya: Any plans to switch?
+Dana: No. Our dispatchers live in it. Switching would mean retraining 30 people and re-integrating our WMS.
+
+Priya: Pricing?
+Dana: We took a 6% increase last renewal without much argument. If they pushed 15% we would look around.
+
+Priya: Weak spots?
+Dana: Reporting is clunky, and support slowed down last winter during peak season.
+
+Takeaway: strong stickiness in the mid-market core. Mid-market customers like Ridgeway are not the concentration risk; the enterprise accounts are.

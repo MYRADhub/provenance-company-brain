@@ -1,14 +1,28 @@
 """HTTP API. The `user` parameter is the demo user switcher; a real deployment derives it from the session."""
 
-from fastapi import FastAPI, HTTPException, Query
+import shutil
+import threading
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import agent, store, versioning
+from app import agent, ingest, store, vcs, watcher
 from app.config import STATIC_DIR
 
-app = FastAPI(title="Provenance")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    store.init_db()
+    watcher.start(ingest.IMPORT_ROOT)
+    yield
+    watcher.stop()
+
+
+app = FastAPI(title="Provenance", lifespan=lifespan)
 
 
 class ChatMessage(BaseModel):
@@ -21,7 +35,12 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
 
 
-class SaveVersionRequest(BaseModel):
+class ImportRequest(BaseModel):
+    user: str
+    path: str | None = None
+
+
+class DemoSaveRequest(BaseModel):
     user: str
     deal: str
 
@@ -33,14 +52,35 @@ def _require_user(email: str) -> dict:
     return user
 
 
+def _forbidden() -> HTTPException:
+    c = store.compliance_contact() or {}
+    return HTTPException(
+        status_code=403,
+        detail=f"You are not cleared for this deal. Contact {c.get('name', 'Compliance')} if you believe you should be.",
+    )
+
+
 def _require_deal(email: str, deal: str) -> None:
     _require_user(email)
     if not store.can_access_deal(email, deal):
-        c = store.compliance_contact() or {}
-        raise HTTPException(
-            status_code=403,
-            detail=f"You are not cleared for this deal. Contact {c.get('name', 'Compliance')} if you believe you should be.",
-        )
+        raise _forbidden()
+
+
+def _require_model(email: str, model_id: str) -> dict:
+    _require_user(email)
+    for d in store.accessible_deals(email):
+        for m in vcs.list_models(d["id"]):
+            if m["id"] == model_id:
+                return m
+    raise _forbidden()
+
+
+def _require_commit(email: str, commit_id: str) -> dict:
+    commit = vcs.get_commit(commit_id)
+    if not commit:
+        raise _forbidden()
+    _require_model(email, commit["model_id"])
+    return commit
 
 
 @app.get("/api/users")
@@ -59,40 +99,126 @@ def chat(req: ChatRequest):
     return agent.run(req.user, [m.model_dump() for m in req.messages])
 
 
-@app.get("/api/deals/{deal}/versions")
-def versions(deal: str, user: str):
+@app.get("/api/deals/{deal}/models")
+def models(deal: str, user: str):
     _require_deal(user, deal)
-    return {"deal": deal, "versions": store.list_versions(deal)}
+    return {"models": vcs.list_models(deal)}
 
 
-@app.get("/api/deals/{deal}/changes")
-def changes(deal: str, user: str, from_version: int | None = Query(None, alias="from"), to: int | None = None):
-    _require_deal(user, deal)
-    versions = [v["version"] for v in store.list_versions(deal)]
-    if not versions:
-        return {"changes": []}
-    to = to if to is not None else max(versions)
-    from_version = from_version if from_version is not None else max(min(versions), to - 1)
-    return {"from": from_version, "to": to, "changes": store.get_changes(deal, from_version, to)}
+@app.get("/api/models/{model_id}/graph")
+def model_graph(model_id: str, user: str):
+    _require_model(user, model_id)
+    return vcs.graph(model_id)
+
+
+@app.get("/api/commits/diff")
+def commits_diff(user: str, a: str, b: str):
+    ca, cb = _require_commit(user, a), _require_commit(user, b)
+    if ca["model_id"] != cb["model_id"]:
+        raise HTTPException(status_code=400, detail="Commits belong to different models")
+    return {"from": a, "to": b, "changes": vcs.commit_diff(a, b)}
 
 
 @app.get("/api/deals/{deal}/stale")
 def stale(deal: str, user: str):
     _require_deal(user, deal)
-    return {"stale": store.stale_references(deal)}
+    return {"stale": vcs.stale_references(deal)}
 
 
-@app.post("/api/demo/save-version")
-def save_version(req: SaveVersionRequest):
+@app.post("/api/import")
+def import_folder(req: ImportRequest):
+    user = _require_user(req.user)
+    if user["role"] not in ("managing_partner", "compliance", "principal"):
+        raise HTTPException(status_code=403, detail="Only principals, partners and compliance can import folders.")
+    root = Path(req.path).expanduser() if req.path else ingest.IMPORT_ROOT
+    if not root.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a folder: {root}")
+    global _alert_floor
+    result = ingest.scan(root)
+    _alert_floor = max(_alert_floor, _latest_seq())
+    return {
+        "root": str(root),
+        "commits": len(result.get("commits", [])),
+        "docs": len(result.get("docs", [])),
+        "skipped": result.get("skipped", 0),
+    }
+
+
+@app.post("/api/demo/save")
+def demo_save(req: DemoSaveRequest):
     _require_deal(req.user, req.deal)
-    existing = store.list_versions(req.deal)
-    next_version = (max(v["version"] for v in existing) + 1) if existing else 1
-    try:
-        saved = versioning.save_version(req.deal, next_version)
-    except (KeyError, ValueError) as e:
-        raise HTTPException(status_code=400, detail=f"No scripted version v{next_version} for this deal: {e}")
-    alert = agent.proactive_alert(req.user, req.deal, saved)
-    return {**saved, "alert": alert}
+    for src in sorted(p for p in ingest.LIVE_ROOT.rglob("*") if p.is_file()):
+        rel = src.relative_to(ingest.LIVE_ROOT)
+        dest = ingest.IMPORT_ROOT / rel
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            dest.touch()  # a save happens now
+            return {"saved": str(rel)}
+    raise HTTPException(status_code=400, detail="No more scripted saves. Edit and save a model in Excel instead.")
+
+
+# Proactive alerts are generated per (commit, user) because each user sees the brain through their own walls.
+# Only live saves get alerts: events at or below _alert_floor came from bulk imports.
+_alerts: dict[tuple[str, str], dict | None] = {}
+_alerts_lock = threading.Lock()
+_alert_floor = 0
+
+
+def _latest_seq() -> int:
+    evs = watcher.events_since(0)
+    return max((e["seq"] for e in evs), default=0)
+
+
+def _alert_for(email: str, commit: dict) -> dict | None:
+    key = (commit["id"], email)
+    with _alerts_lock:
+        if key in _alerts:
+            return _alerts[key]
+        _alerts[key] = None
+
+    def work():
+        try:
+            result = agent.proactive_alert(email, commit)
+        except Exception as e:
+            result = {"answer": f"Could not generate the alert: {e}", "tool_trace": [], "citations": []}
+        with _alerts_lock:
+            _alerts[key] = result
+
+    threading.Thread(target=work, daemon=True).start()
+    return None
+
+
+@app.get("/api/events")
+def events(user: str, since: int = 0):
+    _require_user(user)
+    out, seq = [], since
+    for ev in watcher.events_since(since):
+        seq = max(seq, ev["seq"])
+        deal_id = ev.get("deal_id")
+        if deal_id and deal_id != "firm" and not store.can_access_deal(user, deal_id):
+            continue
+        item = {k: v for k, v in ev.items() if k != "commit"}
+        if ev.get("type") == "commit" and ev.get("commit"):
+            item["commit"] = {k: v for k, v in ev["commit"].items() if k != "changes"}
+            # since=0 is the client priming its cursor: history, not news.
+            live = since > 0 and ev["seq"] > _alert_floor
+            item["alert"] = _alert_for(user, ev["commit"]) if live else None
+            item["alert_pending"] = live and item["alert"] is None
+        out.append(item)
+    return {"events": out, "seq": seq}
+
+
+@app.get("/api/alerts/{commit_id}")
+def alert(commit_id: str, user: str):
+    commit = _require_commit(user, commit_id)
+    with _alerts_lock:
+        known = (commit_id, user) in _alerts
+        result = _alerts.get((commit_id, user))
+    if not known:
+        full = next((ev["commit"] for ev in watcher.events_since(0) if ev.get("commit", {}).get("id") == commit_id), None)
+        result = _alert_for(user, full or commit)
+    return {"pending": result is None, "alert": result}
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
