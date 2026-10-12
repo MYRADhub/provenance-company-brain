@@ -245,6 +245,8 @@ def run(email: str, messages: list[dict]) -> dict:
     tools = _openai_tools()
     question = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
     governance.log(email, "question", question)
+    for deal in governance.walled_deals_mentioned(email, question):
+        governance.log(email, "blocked", f"asked about {deal['codename']} without being staffed on it", "blocked")
     instructions = _system_prompt(email)
     trace: list[dict] = []
     sources: dict[str, dict] = {}

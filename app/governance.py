@@ -4,6 +4,7 @@ Brain documents carry a deal principal (group:northbeam:<deal>), while staffing 
 A staffing change therefore takes effect on the user's next query without re-indexing anything.
 """
 
+import re
 from datetime import datetime, timezone
 
 from app import store
@@ -109,3 +110,19 @@ def decide(admin_email: str, request_id: int, approve: bool, deal_id: str | None
     )
     log(admin_email, "access_decision", f"{'approved' if approve else 'declined'} request {request_id} from {req['email']}")
     return store._rows("SELECT * FROM access_requests WHERE id = ?", (request_id,))[0]
+
+
+def walled_deals_mentioned(email: str, text: str) -> list[dict]:
+    """Deals the user is not staffed on that their question names (codename, company or deal id).
+
+    Used only for the audit trail; the user is never told whether a match happened.
+    """
+    lowered = f" {(text or '').lower()} "
+    hits = []
+    for deal in store._rows("SELECT id, codename, company FROM deals"):
+        if store.can_access_deal(email, deal["id"]):
+            continue
+        names = {deal["id"], deal["codename"] or "", (deal["codename"] or "").removeprefix("Project "), deal["company"] or ""}
+        if any(n and len(n) >= 4 and re.search(rf"\b{re.escape(n.lower())}\b", lowered) for n in names):
+            hits.append(deal)
+    return hits

@@ -69,5 +69,26 @@ def test_questions_and_blocked_lookups_are_audited(monkeypatch):
 
     assert result["tool_trace"][0]["summary"] == "restricted"
     entries = governance.audit_log()
-    assert entries[0]["action"] == "blocked" and entries[0]["email"] == MARCUS
-    assert entries[1]["action"] == "question" and "Falcon" in entries[1]["detail"]
+    assert [e["action"] for e in entries[:3]] == ["blocked", "blocked", "question"]
+    assert entries[0]["detail"].startswith("list_models")  # the agent's blocked lookup
+    assert "Project Falcon" in entries[1]["detail"]  # the question named a walled deal
+    assert "Falcon" in entries[2]["detail"] and all(e["email"] == MARCUS for e in entries[:3])
+
+
+def test_asking_about_a_walled_deal_is_logged_as_blocked(monkeypatch):
+    from types import SimpleNamespace
+
+    fake = SimpleNamespace(responses=SimpleNamespace(create=lambda **_: SimpleNamespace(output=[], output_text="Nothing you are cleared to see.")))
+    monkeypatch.setattr(agent, "OpenAI", lambda: fake)
+
+    agent.run(MARCUS, [{"role": "user", "content": "Tell me about Project Falcon and Acme Freight"}])
+    entries = governance.audit_log()
+    assert entries[0]["outcome"] == "blocked" and "Project Falcon" in entries[0]["detail"]
+
+    agent.run(PRIYA, [{"role": "user", "content": "Tell me about Project Falcon"}])
+    assert governance.audit_log()[0]["action"] == "question"  # staffed: no blocked entry
+
+
+def test_walled_deal_matching_needs_whole_words():
+    assert governance.walled_deals_mentioned(MARCUS, "falconry is a hobby") == []
+    assert [d["id"] for d in governance.walled_deals_mentioned(MARCUS, "what about falcon?")] == ["falcon"]
