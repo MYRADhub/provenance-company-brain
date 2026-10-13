@@ -27,7 +27,7 @@ from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
 
 from app import config, store
-from app.config import COLLECTION, HYDRA_DATABASE, LLM_MODEL, ROOT, hydra
+from app.config import COLLECTION, HYDRA_DATABASE, ROOT, hydra
 
 IMPORT_ROOT = config.IMPORT_ROOT
 LIVE_ROOT = ROOT / "samples" / "_live"
@@ -347,21 +347,19 @@ _QUOTE_SCHEMA = {
 
 
 def llm_extract_quotes(text: str) -> list[dict]:
-    from openai import OpenAI
+    from app import llm
 
-    response = OpenAI().responses.create(
-        model=LLM_MODEL,
-        reasoning={"effort": "low"},
+    return llm.complete_json(
+        text[:12000],
+        _QUOTE_SCHEMA,
+        "quoted_metrics",
         instructions=(
             "Extract the base-case financial model figures this document quotes. Metrics: revenue_growth "
             "(annual, as a fraction, 12% -> 0.12), ebitda_margin (fraction), fy26_revenue ($M), fy26_ebitda ($M), "
             "exit_multiple (x), irr (gross, fraction), moic (x). Only include metrics the text states explicitly "
             "for the base case; ignore downside or sensitivity cases and historical figures. At most one per metric."
         ),
-        input=text[:12000],
-        text={"format": {"type": "json_schema", "name": "quoted_metrics", "schema": _QUOTE_SCHEMA, "strict": True}},
-    )
-    return json.loads(response.output_text)["quotes"]
+    )["quotes"]
 
 
 _NUM = r"(\d+(?:\.\d+)?)"

@@ -35,7 +35,6 @@ def deal_group(deal_id: str) -> str:
 
 HYDRA_DATABASE = os.environ.get("HYDRA_DB_DATABASE", "northbeam_capital")
 COLLECTION = "brain"
-LLM_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.5")
 
 
 @lru_cache(maxsize=1)

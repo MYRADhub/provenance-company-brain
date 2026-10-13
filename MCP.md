@@ -92,3 +92,14 @@ The defaults describe the demo's fictional fund. A real firm sets:
 | `BRAIN_FIRM_SLUG` | Prefix of deal-team principals (reindex after changing) | northbeam |
 | `BRAIN_IMPORT_ROOT` | The shared drive to watch: a folder per deal, `_firm` for firm-wide | `samples/Northbeam Deals` |
 | `BRAIN_TODAY` | Fix "today" (YYYY-MM-DD) | 2026-10-12 on the bundled samples, otherwise the real date |
+
+## The brain's own assistant
+
+The web UI's assistant, proactive alerts, commit messages, metric-cell
+detection and quote extraction use the model `BRAIN_LLM_PROVIDER` names:
+`openai` (`OPENAI_MODEL`, default gpt-5.5) or `anthropic` (`ANTHROPIC_MODEL`,
+default claude-opus-5-5). Unset, it is OpenAI when `OPENAI_API_KEY` is set,
+else Claude when `ANTHROPIC_API_KEY` is set, else none: every helper then
+uses its non-LLM fallback and the assistant says it is off. Tessel's
+assistant does not use this; it reaches the brain's tools over MCP with the
+user's own provider.
