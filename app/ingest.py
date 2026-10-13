@@ -17,6 +17,7 @@ import email.policy
 import fcntl
 import hashlib
 import json
+import os
 import re
 import threading
 import time
@@ -629,3 +630,40 @@ def _scan(root: Path, wait: bool) -> dict:
     if wait and pending:
         wait_until_searchable([d["doc_id"] for d, *_ in pending])
     return result
+
+
+# --------------------------------------------------------------------------- direct saves
+
+def record_upload(path: Path, data: bytes, saved_ms: float, deal_id: str, author_email: str) -> tuple[dict | None, list[str]]:
+    """Write a model file an app sent us (a Tessel save) to `path` and commit it, as the folder scan would.
+
+    The author is the caller, not a guess from the folder. Returns (commit or None when the content is
+    already known, warnings). The commit stands even when the brain could not index its change log.
+    """
+    from app import vcs
+
+    warnings: list[str] = []
+    with exclusive():
+        # Inside the lock, so two saves of one workbook cannot overwrite the file while it is being read.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.part")
+        tmp.write_bytes(data)
+        os.utime(tmp, (saved_ms / 1000, saved_ms / 1000))
+        os.replace(tmp, path)
+        saved_at = vcs._iso(saved_ms / 1000)
+        commit = vcs.record_snapshot(path, deal_id, author_email, saved_at)
+        if commit is None:
+            return None, warnings
+        commit = {**commit, "deal_id": deal_id}
+        docs = [commit_doc(commit, deal_id)]
+        summary = model_summary_doc(commit, deal_id, path)
+        if summary:
+            docs.append(summary)
+        try:
+            hydra_ingest([app_item(d) for d in docs])
+        except Exception as e:
+            warnings.append(f"The change log could not be indexed for search: {type(e).__name__}: {e}")
+        for doc in docs:
+            register_document(doc)
+        _mark_seen(str(path), sha256(path), path.stat().st_mtime, "excel", doc_id=docs[0]["doc_id"], commit_id=commit["id"])
+    return commit, warnings

@@ -60,3 +60,9 @@ def revoke(email: str, token_id: str) -> bool:
         return False
     store.execute("DELETE FROM api_tokens WHERE token_hash = ?", (matches[0]["token_hash"],))
     return True
+
+
+def from_header(authorization: str | None) -> str | None:
+    """The user behind an `Authorization: Bearer ...` header, or None."""
+    auth = authorization or ""
+    return user_for(auth[7:].strip()) if auth[:7].lower() == "bearer " else None

@@ -1,4 +1,4 @@
-# Using the brain from another app (MCP)
+# Using the brain from another app (MCP and the app API)
 
 The brain's six tools are served over the Model Context Protocol at `POST /mcp`
 (Streamable HTTP, stateless, JSON responses). Any MCP client can use them;
@@ -37,3 +37,22 @@ Tessel is the first.
   private retrieval backend) applies until a local backend exists.
 - Browser requests must come from localhost or an origin listed in
   `MCP_ALLOWED_ORIGINS` (comma separated).
+
+## Recording saves (`/api/v1`)
+
+Apps record saves directly instead of waiting for the folder watcher. Same
+bearer token.
+
+- `GET /api/v1/me`: the token's user and the deals they are staffed on.
+- `POST /api/v1/saves` with JSON `{deal, workbook_id, file_name, data, saved_at}`:
+  `data` is the .xlsx/.xlsm in base64 (25 MB at most), `workbook_id` a stable id
+  the app keeps inside the workbook (8 to 64 of `A-Z a-z 0-9 _ -`), `saved_at`
+  milliseconds since the epoch. The file is kept under
+  `data/uploads/<deal>/<workbook_id>/` and committed exactly as a scanned file
+  would be, with the caller as author. The answer holds the commit (or `null`
+  when the brain already had that content), the documents that now quote
+  numbers the model no longer shows, and any warnings (for example when the
+  change log could not be indexed for search).
+- A deal the caller is not staffed on answers 404, the same as one that does
+  not exist.
+- Tessel's hidden `_tessel_meta` sheet is ignored when reading workbooks.

@@ -7,11 +7,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import agent, governance, ingest, mcp, store, vcs, watcher
+from app import agent, api_v1, governance, ingest, mcp, store, vcs, watcher
 from app.config import STATIC_DIR
 
 
@@ -25,6 +26,15 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Provenance", lifespan=lifespan)
 app.include_router(mcp.router)
+app.include_router(api_v1.router)
+# Tessel's browser build calls /mcp and /api/v1 from its own origin; the desktop app sends none.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=mcp.LOCAL_ORIGIN.pattern,
+    allow_origins=mcp.extra_origins(),
+    allow_methods=["GET", "POST"],
+    allow_headers=["authorization", "content-type", "mcp-protocol-version", "mcp-session-id"],
+)
 
 
 class ChatMessage(BaseModel):
