@@ -2,6 +2,7 @@
 
 import shutil
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -219,6 +220,7 @@ def decide_access_request(request_id: int, req: DecisionRequest):
 # Only live saves get alerts: events at or below _alert_floor came from bulk imports.
 _alerts: dict[tuple[str, str], dict | None] = {}
 _alerts_lock = threading.Lock()
+_alert_started: dict[tuple[str, str], float] = {}
 _alert_floor = 0
 
 
@@ -227,12 +229,20 @@ def _latest_seq() -> int:
     return max((e["seq"] for e in evs), default=0)
 
 
+ALERT_STALE_S = 150  # a job pending longer than this is presumed hung and is started again
+
+
 def _alert_for(email: str, commit: dict) -> dict | None:
     key = (commit["id"], email)
+    now = time.monotonic()
     with _alerts_lock:
         if key in _alerts:
-            return _alerts[key]
+            if _alerts[key] is not None:
+                return _alerts[key]
+            if now - _alert_started.get(key, now) < ALERT_STALE_S:
+                return None
         _alerts[key] = None
+        _alert_started[key] = now
 
     def work():
         try:
@@ -240,7 +250,8 @@ def _alert_for(email: str, commit: dict) -> dict | None:
         except Exception as e:
             result = {"answer": f"Could not generate the alert: {e}", "tool_trace": [], "citations": []}
         with _alerts_lock:
-            _alerts[key] = result
+            if _alert_started.get(key) == now:  # ignore a late result from a job that was restarted
+                _alerts[key] = result
 
     threading.Thread(target=work, daemon=True).start()
     return None

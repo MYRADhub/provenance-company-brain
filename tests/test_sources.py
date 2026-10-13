@@ -48,3 +48,28 @@ def test_answer_links_are_verified(monkeypatch):
     assert "[CFO call](/files/f_test)" in answer and "[v3](#commit=abc123)" in answer
     assert "f_fake" not in answer and "made up" in answer and "#commit=zzz" not in answer
     assert [c["url"] for c in cited] == ["/files/f_test", "#commit=abc123"]
+
+
+def test_hung_alert_job_is_restarted(monkeypatch):
+    import threading
+
+    calls = []
+    release = threading.Event()
+
+    def slow_alert(email, commit):
+        calls.append(email)
+        release.wait(5)
+        return {"answer": "ok", "tool_trace": [], "citations": []}
+
+    monkeypatch.setattr(main.agent, "proactive_alert", slow_alert)
+    monkeypatch.setattr(main, "ALERT_STALE_S", 0.0)
+    main._alerts.clear()
+    commit = {"id": "c1"}
+    assert main._alert_for(PRIYA, commit) is None
+    assert main._alert_for(PRIYA, commit) is None  # stale immediately -> second job started
+    release.set()
+    for _ in range(50):
+        if main._alerts.get(("c1", PRIYA)):
+            break
+        threading.Event().wait(0.05)
+    assert len(calls) == 2 and main._alerts[("c1", PRIYA)]["answer"] == "ok"

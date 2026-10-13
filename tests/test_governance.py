@@ -63,7 +63,7 @@ def test_questions_and_blocked_lookups_are_audited(monkeypatch):
         SimpleNamespace(output=[], output_text="Nothing you are cleared to see."),
     ])
     fake = SimpleNamespace(responses=SimpleNamespace(create=lambda **_: next(replies)))
-    monkeypatch.setattr(agent, "OpenAI", lambda: fake)
+    monkeypatch.setattr(agent, "OpenAI", lambda **_: fake)
 
     result = agent.run(MARCUS, [{"role": "user", "content": "Tell me about Falcon"}])
 
@@ -79,7 +79,7 @@ def test_asking_about_a_walled_deal_is_logged_as_blocked(monkeypatch):
     from types import SimpleNamespace
 
     fake = SimpleNamespace(responses=SimpleNamespace(create=lambda **_: SimpleNamespace(output=[], output_text="Nothing you are cleared to see.")))
-    monkeypatch.setattr(agent, "OpenAI", lambda: fake)
+    monkeypatch.setattr(agent, "OpenAI", lambda **_: fake)
 
     agent.run(MARCUS, [{"role": "user", "content": "Tell me about Project Falcon and Acme Freight"}])
     entries = governance.audit_log()

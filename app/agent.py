@@ -10,6 +10,7 @@ from app.config import LLM_MODEL
 
 TODAY = "Monday, October 12, 2026"
 MAX_STEPS = 10
+LLM_TIMEOUT_S = 60
 
 TOOLS = [
     {
@@ -240,7 +241,8 @@ def _openai_tools() -> list[dict]:
 
 def run(email: str, messages: list[dict]) -> dict:
     """Run the agent loop. `messages` is the chat history as [{role, content}] with plain-text content."""
-    client = OpenAI()
+    # Bounded calls: a hung request must fail fast instead of leaving an alert pending forever.
+    client = OpenAI(timeout=LLM_TIMEOUT_S, max_retries=1)
     items: list = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("content")]
     tools = _openai_tools()
     question = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
