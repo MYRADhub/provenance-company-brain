@@ -15,6 +15,8 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 
 HEADER_SCAN_ROWS = 40
+# Tessel keeps its own metadata (provenance, AI log) in a very hidden sheet; it is not part of the model.
+APP_SHEETS = {"_tessel_meta"}
 
 
 def _norm(value):
@@ -40,7 +42,8 @@ def read_workbook(path: str | Path) -> dict:
     wb_f = load_workbook(path, data_only=False)
     wb_v = load_workbook(path, data_only=True)
     sheets: dict[str, dict] = {}
-    for name in wb_f.sheetnames:
+    names = [n for n in wb_f.sheetnames if not (n in APP_SHEETS and wb_f[n].sheet_state == "veryHidden")]
+    for name in names:
         ws_f = wb_f[name]
         ws_v = wb_v[name]
         grid: dict[tuple[int, int], dict] = {}
@@ -55,7 +58,7 @@ def read_workbook(path: str | Path) -> dict:
                     continue
                 grid[(c.row, c.column)] = {"value": value, "formula": formula}
         sheets[name] = _label_grid(grid)
-    return {"order": list(wb_f.sheetnames), "sheets": sheets}
+    return {"order": names, "sheets": sheets}
 
 
 def _label_grid(grid: dict[tuple[int, int], dict]) -> dict[str, dict]:

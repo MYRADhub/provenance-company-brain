@@ -36,11 +36,14 @@ INSTRUCTIONS = (
 router = APIRouter()
 
 
-def _allowed_origin(origin: str | None) -> bool:
+def extra_origins() -> list[str]:
+    return [o.strip() for o in os.environ.get("MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+
+
+def allowed_origin(origin: str | None) -> bool:
     if not origin:
         return True
-    extra = {o.strip() for o in os.environ.get("MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()}
-    return origin in extra or bool(LOCAL_ORIGIN.match(origin))
+    return origin in extra_origins() or bool(LOCAL_ORIGIN.match(origin))
 
 
 def _absolute_links(value, base: str):
@@ -101,10 +104,9 @@ def call_tool(email: str, name: str, args: dict, base: str) -> dict:
 
 @router.post("/mcp")
 async def mcp_post(request: Request) -> Response:
-    if not _allowed_origin(request.headers.get("origin")):
+    if not allowed_origin(request.headers.get("origin")):
         return JSONResponse({"error": "Origin not allowed"}, status_code=403)
-    auth = request.headers.get("authorization", "")
-    email = tokens.user_for(auth[7:].strip()) if auth[:7].lower() == "bearer " else None
+    email = tokens.from_header(request.headers.get("authorization"))
     if not email:
         return _unauthorized()
 
