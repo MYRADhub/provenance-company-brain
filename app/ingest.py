@@ -29,11 +29,11 @@ from pathlib import Path
 from app import config, store
 from app.config import COLLECTION, HYDRA_DATABASE, LLM_MODEL, ROOT, hydra
 
-IMPORT_ROOT = ROOT / "samples" / "Northbeam Deals"
+IMPORT_ROOT = config.IMPORT_ROOT
 LIVE_ROOT = ROOT / "samples" / "_live"
 
 FIRM_FOLDER = "_firm"
-DOMAIN = "northbeam.com"
+DOMAIN = config.FIRM_DOMAIN
 FIRM_ACL = [f"domain:{DOMAIN}"]
 EXCEL_EXT = {".xlsx", ".xlsm"}
 TEXT_EXT = {".txt", ".md", ".eml", ".docx", ".pdf"}
@@ -75,7 +75,7 @@ def is_ignored(path: Path) -> bool:
 
 
 def deal_acl(deal_id: str | None) -> list[str]:
-    return FIRM_ACL if deal_id is None else [f"group:northbeam:{deal_id}"]
+    return FIRM_ACL if deal_id is None else [config.deal_group(deal_id)]
 
 
 def iso_from_mtime(mtime: float) -> str:
@@ -273,7 +273,7 @@ def app_item(doc: dict) -> dict:
         fields.update({"title": doc["title"], "created_by": author, "created_at": ts})
     return {
         "id": doc["doc_id"], "database": HYDRA_DATABASE, "collection": COLLECTION, "title": doc["title"],
-        "kind": kind, "provider": "northbeam", "external_id": doc["doc_id"], "timestamp": ts, "fields": fields,
+        "kind": kind, "provider": config.FIRM_SLUG, "external_id": doc["doc_id"], "timestamp": ts, "fields": fields,
         "metadata": {"deal": doc["deal_id"] or "firm", "doc_kind": doc["doc_kind"]},
         "additional_metadata": {"author": doc["author_email"], "date": doc["date"]},
         "acl": doc["acl"],

@@ -79,3 +79,16 @@ bearer token.
   `BRAIN_SESSION_SECRET` so sessions survive restarts), and every `/api` and
   `/files` request may act only as the signed-in user. Attempts to act as
   someone else are refused and written to the audit log.
+
+## Running it for a firm
+
+The defaults describe the demo's fictional fund. A real firm sets:
+
+| Variable | Meaning | Demo default |
+|---|---|---|
+| `BRAIN_FIRM_NAME` | Shown in the UI and to the assistant | Northbeam Capital |
+| `BRAIN_FIRM_DESCRIPTION` | One line for the assistant | a mid-market private equity fund |
+| `BRAIN_FIRM_DOMAIN` | Email domain; firm-wide documents are readable at it | northbeam.com |
+| `BRAIN_FIRM_SLUG` | Prefix of deal-team principals (reindex after changing) | northbeam |
+| `BRAIN_IMPORT_ROOT` | The shared drive to watch: a folder per deal, `_firm` for firm-wide | `samples/Northbeam Deals` |
+| `BRAIN_TODAY` | Fix "today" (YYYY-MM-DD) | 2026-10-12 on the bundled samples, otherwise the real date |

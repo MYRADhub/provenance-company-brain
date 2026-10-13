@@ -90,7 +90,7 @@ def user_principals(email: str) -> list[str]:
     if not get_user(email):
         return []
     deals = _rows("SELECT deal_id FROM deal_members WHERE email = ? ORDER BY deal_id", (email,))
-    return [email] + [f"group:northbeam:{d['deal_id']}" for d in deals]
+    return [email] + [config.deal_group(d["deal_id"]) for d in deals]
 
 
 def can_access_deal(email: str, deal_id: str) -> bool:
