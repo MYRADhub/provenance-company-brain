@@ -1,4 +1,4 @@
-"""HydraDB retrieval with the caller's identity applied as ACL.
+"""Retrieval with the caller's identity applied as ACL: HydraDB, or the local index (app/retrieval.py).
 
 The ACL is always derived from the server-side user record, never from model or client input,
 so content behind an ethical wall is never retrieved for a user outside it.
@@ -6,7 +6,7 @@ so content behind an ethical wall is never retrieved for a user outside it.
 
 from pathlib import Path
 
-from app import store
+from app import retrieval, store
 from app.config import COLLECTION, HYDRA_DATABASE, hydra
 
 MAX_CHUNK_CHARS = 1500
@@ -20,10 +20,37 @@ def _get(obj, name, default=None):
     return getattr(obj, name, default)
 
 
+def _chunk(doc_id: str, doc: dict, text: str, deal=None, kind=None, date=None, author=None) -> dict:
+    path, url = source_link(doc_id)
+    return {
+        "id": doc_id,
+        "title": doc["title"],
+        "file": path,
+        "url": url,
+        "deal": doc.get("deal_id") or deal,
+        "kind": doc.get("kind") or kind,
+        "date": doc.get("date") or date,
+        "author": doc.get("author_email") or author,
+        "text": text[:MAX_CHUNK_CHARS],
+    }
+
+
+def _search_local(email: str, query: str, deal: str | None, max_results: int) -> dict:
+    chunks = []
+    for hit in retrieval.search_local(email, query, deal, max_results):
+        # SQLite decides what exists, as for HydraDB results.
+        doc = store.get_document(hit["doc_id"])
+        if doc is not None:
+            chunks.append(_chunk(hit["doc_id"], doc, hit["text"], deal=hit["deal"]))
+    return {"chunks": chunks, "graph_paths": []}
+
+
 def search(email: str, query: str, deal: str | None = None, max_results: int = 8) -> dict:
     principals = store.user_principals(email)
     if not principals:
         return {"chunks": [], "graph_paths": []}
+    if retrieval.backend() == "local":
+        return _search_local(email, query, deal, max_results)
 
     kwargs = dict(
         database=HYDRA_DATABASE,
@@ -55,20 +82,9 @@ def search(email: str, query: str, deal: str | None = None, max_results: int = 8
             # Not registered in SQLite: deleted, or not yet saved (e.g. a change log for a version
             # the demo has not saved). HydraDB deletes are async, so SQLite decides what exists.
             continue
-        path, url = source_link(doc_id)
-        chunks.append(
-            {
-                "id": doc_id,
-                "title": doc["title"],
-                "file": path,
-                "url": url,
-                "deal": doc.get("deal_id") or _get(meta, "deal"),
-                "kind": doc.get("kind") or _get(meta, "doc_kind") or _get(c, "source_type"),
-                "date": doc.get("date") or _get(extra, "date"),
-                "author": doc.get("author_email") or _get(extra, "author"),
-                "text": text[:MAX_CHUNK_CHARS],
-            }
-        )
+        chunks.append(_chunk(doc_id, doc, text, deal=_get(meta, "deal"),
+                             kind=_get(meta, "doc_kind") or _get(c, "source_type"),
+                             date=_get(extra, "date"), author=_get(extra, "author")))
 
     graph_paths = []
     graph = _get(data, "graph_context")

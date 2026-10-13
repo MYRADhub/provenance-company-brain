@@ -38,6 +38,7 @@ def test_me_lists_only_staffed_deals(client):
     assert res.status_code == 200
     assert res.json()["user"]["name"] == "Marcus Lee"
     assert [d["id"] for d in res.json()["deals"]] == ["harbor"]
+    assert res.json()["retrieval"] == "hydra"  # pinned by conftest
 
 
 def test_requires_a_token(client):

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
 
-from app import config, governance, ingest, mcp, store, tokens, vcs, watcher
+from app import config, governance, ingest, mcp, retrieval, store, tokens, vcs, watcher
 
 router = APIRouter(prefix="/api/v1")
 
@@ -45,7 +45,9 @@ def me(authorization: str | None = Header(None), origin: str | None = Header(Non
     user = store.get_user(email) or {}
     deals = [{"id": d["id"], "codename": d["codename"], "company": d["company"], "status": d["status"]}
              for d in store.accessible_deals(email)]
-    return {"user": {"email": email, "name": user.get("name"), "title": user.get("title")}, "deals": deals}
+    # Where document search runs, so the app can tell its user what leaves the firm.
+    return {"user": {"email": email, "name": user.get("name"), "title": user.get("title")}, "deals": deals,
+            "retrieval": retrieval.backend()}
 
 
 class SaveRequest(BaseModel):

@@ -7,6 +7,8 @@ from app.seed_content import DEALS, MEMBERSHIPS, USERS
 @pytest.fixture(autouse=True)
 def temp_db(tmp_path, monkeypatch):
     """Every test gets its own SQLite file and snapshot dir; nothing touches data/brain.db or the network."""
+    # Existing tests stub HydraDB; tests of the local index ask for it themselves.
+    monkeypatch.setenv("BRAIN_RETRIEVAL", "hydra")
     monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "data" / "brain.db")
     monkeypatch.setattr(vcs, "llm_metric_cells", lambda wb: {})

@@ -32,9 +32,12 @@ Tessel is the first.
 - Ethical walls apply exactly as in the brain's own assistant; a walled deal
   answers the same as one that does not exist.
 - Every call is written to the governance audit log (`mcp_tool`, or `blocked`).
-- No LLM runs on this path: the client's model reads the results. Retrieval
-  still goes to HydraDB, so the privacy note in Tessel's AI_ROADMAP.md (R3,
-  private retrieval backend) applies until a local backend exists.
+- No LLM runs on this path: the client's model reads the results.
+- Document search runs where `BRAIN_RETRIEVAL` says: `local` (a SQLite
+  full-text index in `brain.db`; nothing leaves the server) or `hydra`
+  (HydraDB, hosted). Unset, it is `hydra` when `HYDRA_DB_API_KEY` is set and
+  `local` otherwise. After switching, run `uv run python scripts/reindex.py`.
+  `/api/v1/me` reports which one is in use.
 - Browser requests must come from localhost or an origin listed in
   `MCP_ALLOWED_ORIGINS` (comma separated).
 
