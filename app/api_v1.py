@@ -6,6 +6,7 @@ author, instead of waiting for the folder watcher and guessing the author from t
 
 import base64
 import binascii
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -128,3 +129,71 @@ def _record(email: str, req: SaveRequest) -> dict:
         return {"commit": None, "stale": [], "warnings": warnings}
     watcher.publish({"commits": [commit]})
     return {"commit": _commit_summary(commit), "stale": _stale_for(req.deal, commit["model_id"]), "warnings": warnings}
+
+
+HISTORY_LIMIT = 50
+CELL_REF = re.compile(r"^[A-Z]{1,3}[1-9][0-9]{0,6}$")
+
+
+def _lineage(deal_id: str, workbook_id: str) -> list[dict]:
+    """The workbook's versions, newest first: its latest commit and every ancestor (which may predate the app's
+    first save, when the workbook started as a scanned file)."""
+    folder = str((config.DATA_DIR / "uploads" / deal_id / workbook_id).resolve()) + os.sep
+    latest = store._rows(
+        "SELECT c.id FROM commits c JOIN models m ON m.id = c.model_id "
+        "WHERE m.deal_id = ? AND substr(c.file_path, 1, ?) = ? ORDER BY c.committed_at DESC, c.rowid DESC LIMIT 1",
+        (deal_id, len(folder), folder),
+    )
+    out: list[dict] = []
+    commit_id = latest[0]["id"] if latest else None
+    seen: set[str] = set()
+    while commit_id and commit_id not in seen and len(out) < HISTORY_LIMIT:
+        seen.add(commit_id)
+        rows = store._rows("SELECT * FROM commits WHERE id = ?", (commit_id,))
+        if not rows:
+            break
+        out.append(rows[0])
+        commit_id = rows[0]["parent_id"]
+    return out
+
+
+@router.get("/history")
+def history(deal: str, workbook_id: str, sheet: str | None = None, cell: str | None = None,
+            authorization: str | None = Header(None), origin: str | None = Header(None)):
+    """A linked workbook's saved versions, and with sheet and cell, how that cell's value changed across them."""
+    email = _caller(authorization, origin)
+    if not store.can_access_deal(email, deal):
+        governance.log(email, "blocked", f"history of deal {deal}", "blocked")
+        raise _not_found()
+    if not WORKBOOK_ID.match(workbook_id):
+        raise HTTPException(status_code=400, detail="workbook_id must be 8 to 64 letters, digits, - or _.")
+    if (sheet is None) != (cell is None) or (cell is not None and not CELL_REF.match(cell)):
+        raise HTTPException(status_code=400, detail="Give both sheet and cell (like C7), or neither.")
+
+    names = {u["email"]: u["name"] for u in store.list_users()}
+    lineage = _lineage(deal, workbook_id)
+    versions = [
+        {"commit": c["id"], "committed_at": c["committed_at"], "author": names.get(c["author_email"], c["author_email"]),
+         "message": c["message"], "branch": c["branch"]}
+        for c in lineage
+    ]
+    result: dict = {"versions": versions}
+    if cell is not None:
+        # Oldest first, keeping each version where the cell's value or formula changed.
+        changes: list[dict] = []
+        label = ""
+        for c in reversed(lineage):
+            try:
+                found = vcs.load_snapshot(c["id"])["sheets"].get(sheet, {}).get(cell)
+            except (OSError, ValueError):
+                continue
+            value, formula = (found["value"], found["formula"]) if found else (None, None)
+            label = (found or {}).get("label") or label
+            if changes and changes[-1]["value"] == value and changes[-1]["formula"] == formula:
+                continue
+            if not changes and value is None and formula is None:
+                continue
+            changes.append({"commit": c["id"], "committed_at": c["committed_at"],
+                            "author": names.get(c["author_email"], c["author_email"]), "value": value, "formula": formula})
+        result["cell"] = {"sheet": sheet, "cell": cell, "label": label, "changes": changes}
+    return result
