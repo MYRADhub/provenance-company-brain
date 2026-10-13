@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import agent, governance, ingest, store, vcs, watcher
+from app import agent, governance, ingest, mcp, store, vcs, watcher
 from app.config import STATIC_DIR
 
 
@@ -24,6 +24,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Provenance", lifespan=lifespan)
+app.include_router(mcp.router)
 
 
 class ChatMessage(BaseModel):
