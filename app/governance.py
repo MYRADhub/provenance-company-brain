@@ -1,6 +1,6 @@
 """Ethical-wall administration: deal staffing, access requests and the audit trail.
 
-Brain documents carry a deal principal (group:northbeam:<deal>), while staffing lives here in SQLite.
+Brain documents carry a deal principal (group:<firm>:<deal>, config.deal_group), while staffing lives here in SQLite.
 A staffing change therefore takes effect on the user's next query without re-indexing anything.
 """
 

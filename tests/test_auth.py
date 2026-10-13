@@ -135,7 +135,7 @@ def test_open_by_default():
 
 
 def test_locked_api_needs_sign_in(locked):
-    assert locked.get("/api/auth-config").json() == {"require_auth": True, "mode": "tokens"}
+    assert locked.get("/api/auth-config").json() == {"require_auth": True, "mode": "tokens", "firm": "Northbeam Capital"}
     assert locked.get("/api/me", params={"user": PRIYA}).status_code == 401
     assert locked.get("/files/anything", params={"user": PRIYA}).status_code == 401
     assert locked.post("/api/session", json={"token": "pb_wrong"}).status_code == 401

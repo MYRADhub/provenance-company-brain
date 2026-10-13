@@ -1,14 +1,24 @@
 """LLM agent over two sources: SQLite facts (what changed) and the HydraDB brain (why)."""
 
+import datetime as dt
 import json
+import os
 import re
 
 from openai import OpenAI
 
-from app import brain, governance, store, vcs
+from app import brain, config, governance, store, vcs
 from app.config import LLM_MODEL
 
-TODAY = "Monday, October 12, 2026"
+# The demo's story is set on one day; elsewhere it is today. BRAIN_TODAY (YYYY-MM-DD) overrides both.
+DEMO_TODAY = "2026-10-12"
+
+
+def today() -> str:
+    chosen = os.environ.get("BRAIN_TODAY") or (DEMO_TODAY if config.is_demo() else None)
+    day = dt.date.fromisoformat(chosen) if chosen else dt.date.today()
+    return f"{day:%A}, {day:%B} {day.day}, {day.year}"
+
 MAX_STEPS = 10
 LLM_TIMEOUT_S = 60
 
@@ -100,8 +110,8 @@ def _system_prompt(email: str) -> str:
     deal_lines = "\n".join(
         f"- {d['id']}: {d['codename']} ({d['company']}, {d['sector']}, {d['status']})" for d in deals
     ) or "- none"
-    return f"""You are Provenance, the company brain of Northbeam Capital, a mid-market private equity fund.
-Today is {TODAY}.
+    return f"""You are Provenance, the company brain of {config.FIRM_NAME}, {config.FIRM_DESCRIPTION}.
+Today is {today()}.
 
 You are answering for {user.get('name')} ({user.get('title')}, {email}).
 Deals this user is cleared for:

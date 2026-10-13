@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import agent, api_v1, auth, governance, ingest, mcp, store, vcs, watcher
+from app import config
 from app.config import STATIC_DIR
 
 
@@ -66,7 +67,7 @@ class SessionRequest(BaseModel):
 
 @app.get("/api/auth-config")
 def auth_config():
-    return {"require_auth": auth.require_auth(), "mode": auth.mode()}
+    return {"require_auth": auth.require_auth(), "mode": auth.mode(), "firm": config.FIRM_NAME}
 
 
 @app.post("/api/session")

@@ -307,7 +307,7 @@ table.matrix .pn { font-weight: 500; font-size: 13.5px; } table.matrix .pt { fon
 <body>
 <aside class="side">
   <div class="brand">
-    <div><h1>Provenance</h1><div class="firm">Northbeam Capital</div></div>
+    <div><h1>Provenance</h1><div class="firm" id="firmName">Northbeam Capital</div></div>
     <button class="icon-btn" id="themeBtn" title="Switch light / dark" aria-label="Switch light or dark theme">
       <svg class="i" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
@@ -1142,7 +1142,9 @@ async function signOut() {
     $("msgs").innerHTML = `<div class="empty"><h2>Can't reach the server</h2><p>${esc(e.message)}</p></div>`;
     return;
   }
-  S.signedIn = await api("/api/auth-config").then((c) => c.require_auth).catch(() => false);
+  const authConfig = await api("/api/auth-config").catch(() => ({}));
+  S.signedIn = !!authConfig.require_auth;
+  if (authConfig.firm) $("firmName").textContent = authConfig.firm;
   let saved = null;
   try { saved = localStorage.getItem("prov_user"); } catch (_) {}
   const first = S.users.find((u) => u.email === saved) || S.users.find((u) => u.email.startsWith("priya")) || S.users[0];
