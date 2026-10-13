@@ -12,7 +12,7 @@ import os
 import re
 from pathlib import Path
 
-from app import config, store, workbook
+from app import config, llm, store, workbook
 
 MODEL_MATCH_THRESHOLD = 0.5
 METRICS = ["revenue_growth", "ebitda_margin", "fy26_revenue", "fy26_ebitda", "exit_multiple", "irr", "moic"]
@@ -97,12 +97,6 @@ def _decode(value):
         return value
 
 
-def _openai():
-    if not os.environ.get("OPENAI_API_KEY"):
-        return None
-    from openai import OpenAI
-
-    return OpenAI()
 
 
 # ----------------------------------------------------------------- LLM steps (each has a fallback)
@@ -132,8 +126,7 @@ def _heuristic_metric_cells(wb: dict) -> dict[str, tuple[str, str]]:
 
 def llm_metric_cells(wb: dict) -> dict[str, tuple[str, str]]:
     """Ask the LLM which cells hold the key metrics. Returns {} on any failure."""
-    client = _openai()
-    if client is None:
+    if not llm.available():
         return {}
     schema = {
         "type": "object",
@@ -163,13 +156,7 @@ def llm_metric_cells(wb: dict) -> dict[str, tuple[str, str]]:
         + workbook.dump_for_llm(wb)
     )
     try:
-        resp = client.responses.create(
-            model=config.LLM_MODEL,
-            reasoning={"effort": "low"},
-            input=prompt,
-            text={"format": {"type": "json_schema", "name": "metric_cells", "schema": schema, "strict": True}},
-        )
-        items = json.loads(resp.output_text)["metrics"]
+        items = llm.complete_json(prompt, schema, "metric_cells")["metrics"]
     except Exception:
         return {}
     out: dict[str, tuple[str, str]] = {}
@@ -205,8 +192,7 @@ def _fallback_message(changes: list[dict], parent_id: str | None, is_fork: bool,
 
 def llm_commit_message(changes: list[dict], metrics: dict, prior_metrics: dict, branch: str, is_fork: bool) -> str | None:
     """One-line git-style commit message from a cell diff. None on any failure."""
-    client = _openai()
-    if client is None or not changes:
+    if not llm.available() or not changes:
         return None
     lines = [
         f"{c['sheet']}!{c['cell']} [{c['label']}] {_fmt_value(c['old_value'])} -> {_fmt_value(c['new_value'])}"
@@ -226,8 +212,7 @@ def llm_commit_message(changes: list[dict], metrics: dict, prior_metrics: dict, 
         + ("\nKey metrics:\n" + "\n".join(metric_lines) if metric_lines else "")
     )
     try:
-        resp = client.responses.create(model=config.LLM_MODEL, reasoning={"effort": "low"}, input=prompt)
-        msg = (resp.output_text or "").strip().splitlines()[0].strip().strip('"')
+        msg = (llm.complete(prompt) or "").strip().splitlines()[0].strip().strip('"')
         return msg[:140] or None
     except Exception:
         return None

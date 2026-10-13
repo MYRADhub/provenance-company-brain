@@ -5,10 +5,7 @@ import json
 import os
 import re
 
-from openai import OpenAI
-
-from app import brain, config, governance, store, vcs
-from app.config import LLM_MODEL
+from app import brain, config, governance, llm, store, vcs
 
 # The demo's story is set on one day; elsewhere it is today. BRAIN_TODAY (YYYY-MM-DD) overrides both.
 DEMO_TODAY = "2026-10-12"
@@ -20,7 +17,6 @@ def today() -> str:
     return f"{day:%A}, {day:%B} {day.day}, {day.year}"
 
 MAX_STEPS = 10
-LLM_TIMEOUT_S = 60
 
 TOOLS = [
     {
@@ -242,56 +238,31 @@ def _run_tool(email: str, name: str, args: dict, sources: dict) -> tuple[dict, s
     return {"error": f"unknown tool {name}"}, "error"
 
 
-def _openai_tools() -> list[dict]:
-    return [
-        {"type": "function", "name": t["name"], "description": t["description"], "parameters": t["input_schema"]}
-        for t in TOOLS
-    ]
-
-
 def run(email: str, messages: list[dict]) -> dict:
     """Run the agent loop. `messages` is the chat history as [{role, content}] with plain-text content."""
-    # Bounded calls: a hung request must fail fast instead of leaving an alert pending forever.
-    client = OpenAI(timeout=LLM_TIMEOUT_S, max_retries=1)
-    items: list = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("content")]
-    tools = _openai_tools()
     question = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
     governance.log(email, "question", question)
     for deal in governance.walled_deals_mentioned(email, question):
         governance.log(email, "blocked", f"asked about {deal['codename']} without being staffed on it", "blocked")
-    instructions = _system_prompt(email)
+    if not llm.available():
+        return {"answer": "The assistant is off: no language model is configured for this brain.", "tool_trace": [],
+                "citations": []}
     trace: list[dict] = []
     sources: dict[str, dict] = {}
-    answer = ""
 
-    for _ in range(MAX_STEPS):
-        response = client.responses.create(
-            model=LLM_MODEL,
-            instructions=instructions,
-            input=items,
-            tools=tools,
-            reasoning={"effort": "low"},
-        )
-        calls = [o for o in response.output if o.type == "function_call"]
-        if not calls:
-            answer = response.output_text or ""
-            break
+    def call(name: str, args: dict) -> object:
+        try:
+            output, summary = _run_tool(email, name, args, sources)
+        except Exception as e:  # surfaced to the model so it can recover
+            output, summary = {"error": str(e)}, f"error: {e}"
+        trace.append({"tool": name, "input": args, "summary": summary})
+        if summary == "restricted":
+            governance.log(email, "blocked", f"{name} {json.dumps(args)}", "blocked")
+        return output
 
-        items += response.output  # keeps reasoning items paired with their function calls
-        for call in calls:
-            try:
-                args = json.loads(call.arguments or "{}")
-                output, summary = _run_tool(email, call.name, args, sources)
-            except Exception as e:  # surfaced to the model so it can recover
-                args = {}
-                output, summary = {"error": str(e)}, f"error: {e}"
-            trace.append({"tool": call.name, "input": args, "summary": summary})
-            if summary == "restricted":
-                governance.log(email, "blocked", f"{call.name} {json.dumps(args)}", "blocked")
-            items.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(output, default=str)})
-    else:
-        answer = answer or "I ran out of steps before finishing. Try a narrower question."
-
+    answer = llm.run_tools(_system_prompt(email), messages, TOOLS, call, MAX_STEPS)
+    if not answer:
+        answer = "I ran out of steps before finishing. Try a narrower question."
     answer, cited = _verified_links(answer, sources)
     return {"answer": answer, "tool_trace": trace, "citations": cited}
 
