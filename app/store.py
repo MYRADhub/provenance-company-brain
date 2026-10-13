@@ -29,13 +29,15 @@ CREATE TABLE IF NOT EXISTS access_log(id INTEGER PRIMARY KEY AUTOINCREMENT, ts T
     detail TEXT, outcome TEXT);
 CREATE TABLE IF NOT EXISTS access_requests(id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, email TEXT,
     reason TEXT, status TEXT, deal_id TEXT, decided_by TEXT, decided_at TEXT);
+CREATE VIRTUAL TABLE IF NOT EXISTS search_chunks USING fts5(doc_id UNINDEXED, deal UNINDEXED, acl UNINDEXED,
+    title, body, tokenize='porter unicode61');
 CREATE TABLE IF NOT EXISTS api_tokens(token_hash TEXT PRIMARY KEY, email TEXT, label TEXT, created_at TEXT,
     last_used_at TEXT);
 """
 
 TABLES = ["users", "deals", "deal_members", "documents", "models", "commits", "branches", "cell_changes",
           "model_metric_cells", "commit_metrics", "doc_references", "files_seen", "access_log", "access_requests",
-          "model_versions", "key_metrics", "api_tokens"]
+          "model_versions", "key_metrics", "api_tokens", "search_chunks"]
 
 
 @contextmanager

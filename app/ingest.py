@@ -287,7 +287,21 @@ def hydra_ingest(items: list[dict]) -> None:
                               app_knowledge=json.dumps(items[i:i + BATCH]))
 
 
+def index_documents(docs: list[dict]) -> None:
+    """Make documents searchable in the configured backend (app/retrieval.py)."""
+    from app import retrieval
+
+    if retrieval.backend() == "local":
+        retrieval.index_local(docs)
+    else:
+        hydra_ingest([app_item(d) for d in docs])
+
+
 def wait_until_searchable(ids: list[str], timeout: float = 600) -> None:
+    from app import retrieval
+
+    if retrieval.backend() == "local":
+        return  # the local index is searchable as soon as it is written
     client = hydra()
     pending, deadline = set(ids), time.time() + timeout
     while pending and time.time() < deadline:
@@ -447,10 +461,10 @@ def commit_doc(commit: dict, deal_id: str) -> dict:
     }
 
 
-def model_summary_doc(commit: dict, deal_id: str, path: Path) -> dict | None:
+def model_summary_doc(commit: dict, deal_id: str, path: Path, rebuild: bool = False) -> dict | None:
     model_id, model_name = _model_of(commit)
     doc_id = f"f_model_{model_id}"
-    if store.get_document(doc_id):
+    if store.get_document(doc_id) and not rebuild:
         return None
     from app import workbook
 
@@ -506,6 +520,36 @@ def scan(root: Path | str = IMPORT_ROOT, wait: bool = False, lock: bool = True) 
         return _scan(root, wait)
     with exclusive():
         return _scan(root, wait)
+
+
+def text_document(path: Path, root: Path, deal_info) -> dict | None:
+    """The brain document for a memo, call, email or note under root; None when it has no text.
+
+    `deal_info(deal_id, deal_dir)` returns the deal's info dict (cached by the caller).
+    """
+    rel = str(path.relative_to(root))
+    mtime = path.stat().st_mtime
+    deal_id, deal_dir = resolve_deal(path, root)
+    info = deal_info(deal_id, deal_dir)
+    meta = extract_text(path)
+    if not meta.get("text"):
+        return None
+    doc_kind = infer_doc_kind(path)
+    author = meta.get("author") if store.get_user(meta.get("author") or "") else None
+    return {
+        "doc_id": doc_id_for(rel),
+        "title": meta.get("title") or path.stem,
+        "deal_id": deal_id,
+        "kind": HYDRA_KIND.get(doc_kind, "knowledge_base"),
+        "doc_kind": doc_kind,
+        "date": meta.get("date") or iso_from_mtime(mtime)[:10],
+        "author_email": author or resolve_author(path, deal_dir, info),
+        "acl": deal_acl(deal_id),
+        "body": meta["text"],
+        "participants": meta.get("participants", []),
+        "from": meta.get("from"), "to": meta.get("to", []), "cc": meta.get("cc", []),
+        "source_path": rel,
+    }
 
 
 def _scan(root: Path, wait: bool) -> dict:
@@ -577,41 +621,27 @@ def _scan(root: Path, wait: bool) -> dict:
         if seen and seen["sha256"] == digest:
             result["skipped"] += 1
             continue
-        deal_id, deal_dir = resolve_deal(path, root)
-        info = deal_info(deal_id, deal_dir)
         try:
-            meta = extract_text(path)
+            doc = text_document(path, root, deal_info)
         except Exception as e:
             result["errors"].append({"path": rel, "error": f"{type(e).__name__}: {e}"})
             continue
-        if not meta.get("text"):
+        if doc is None:
             result["skipped"] += 1
             continue
-        doc_kind = infer_doc_kind(path)
-        author = meta.get("author") if store.get_user(meta.get("author") or "") else None
-        doc = {
-            "doc_id": doc_id_for(rel),
-            "title": meta.get("title") or path.stem,
-            "deal_id": deal_id,
-            "kind": HYDRA_KIND.get(doc_kind, "knowledge_base"),
-            "doc_kind": doc_kind,
-            "date": meta.get("date") or iso_from_mtime(mtime)[:10],
-            "author_email": author or resolve_author(path, deal_dir, info),
-            "acl": deal_acl(deal_id),
-            "body": meta["text"],
-            "participants": meta.get("participants", []),
-            "from": meta.get("from"), "to": meta.get("to", []), "cc": meta.get("cc", []),
-            "source_path": rel,
-        }
+        deal_id, doc_kind = doc["deal_id"], doc["doc_kind"]
         pending.append((doc, rel, digest, mtime, "doc", None))
         if deal_id and doc_kind in QUOTING_KINDS and store._rows("SELECT 1 FROM models WHERE deal_id = ?", (deal_id,)):
-            quoting.append((doc, meta["text"]))
+            quoting.append((doc, doc["body"]))
 
     if pending:
         try:
-            hydra_ingest([app_item(d) for d, *_ in pending])
+            index_documents([d for d, *_ in pending])
         except Exception as e:
-            result["errors"].append({"path": "*", "error": f"HydraDB ingest failed: {type(e).__name__}: {e}"})
+            from app import retrieval
+
+            where = "HydraDB" if retrieval.backend() == "hydra" else "the local index"
+            result["errors"].append({"path": "*", "error": f"Indexing in {where} failed: {type(e).__name__}: {e}"})
             return result
     for doc, rel, digest, mtime, kind, commit_id in pending:
         register_document(doc)
@@ -660,10 +690,67 @@ def record_upload(path: Path, data: bytes, saved_ms: float, deal_id: str, author
         if summary:
             docs.append(summary)
         try:
-            hydra_ingest([app_item(d) for d in docs])
+            index_documents(docs)
         except Exception as e:
             warnings.append(f"The change log could not be indexed for search: {type(e).__name__}: {e}")
         for doc in docs:
             register_document(doc)
         _mark_seen(str(path), sha256(path), path.stat().st_mtime, "excel", doc_id=docs[0]["doc_id"], commit_id=commit["id"])
     return commit, warnings
+
+
+# --------------------------------------------------------------------------- rebuilding the index
+
+def rebuild_index(root: Path | str = IMPORT_ROOT) -> dict:
+    """Index every registered document again in the configured backend, from its source.
+
+    For moving an existing brain to another backend (BRAIN_RETRIEVAL): text documents are read again from
+    their files, change logs rebuilt from the commits, model overviews from each model's first saved file.
+    Nothing new is committed or registered. Returns {indexed, missing}.
+    """
+    from app import vcs
+
+    root = Path(root).resolve()
+    docs: list[dict] = []
+    missing: list[str] = []
+    deal_cache: dict[str, dict] = {}
+
+    def deal_info(deal_id: str | None, deal_dir: Path | None) -> dict | None:
+        if deal_id is None:
+            return None
+        if deal_id not in deal_cache:
+            deal_cache[deal_id] = ensure_deal(deal_id, deal_dir)
+        return deal_cache[deal_id]
+
+    with exclusive():
+        for row in store._rows("SELECT path, doc_id FROM files_seen WHERE kind = 'doc' ORDER BY path"):
+            path = Path(row["path"])
+            path = path if path.is_absolute() else root / path
+            try:
+                doc = text_document(path, root, deal_info) if path.is_file() else None
+            except Exception:  # an unreadable file is reported, not fatal
+                doc = None
+            if doc is None:
+                missing.append(row["path"])
+            else:
+                docs.append(doc)
+
+        summarized: set[str] = set()
+        for c in store._rows("SELECT c.id, c.model_id, c.file_path, m.deal_id FROM commits c "
+                             "JOIN models m ON m.id = c.model_id ORDER BY c.committed_at, c.rowid"):
+            commit = vcs.get_commit(c["id"])
+            if commit is None:
+                continue
+            # Not stored, but a commit on another branch than its parent's is where a fork began.
+            parent = store._rows("SELECT branch FROM commits WHERE id = ?", (commit["parent_id"],)) if commit["parent_id"] else []
+            commit["is_fork"] = bool(parent) and parent[0]["branch"] != commit["branch"]
+            docs.append(commit_doc(commit, c["deal_id"]))
+            # The overview comes from the oldest saved file of the model that is still on disk.
+            if c["model_id"] not in summarized and c["file_path"] and Path(c["file_path"]).is_file():
+                summary = model_summary_doc(commit, c["deal_id"], Path(c["file_path"]), rebuild=True)
+                if summary:
+                    docs.append(summary)
+                    summarized.add(c["model_id"])
+
+        index_documents(docs)
+    return {"indexed": len(docs), "missing": missing}
