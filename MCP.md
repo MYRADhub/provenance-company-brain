@@ -56,3 +56,7 @@ bearer token.
 - A deal the caller is not staffed on answers 404, the same as one that does
   not exist.
 - Tessel's hidden `_tessel_meta` sheet is ignored when reading workbooks.
+- `GET /api/v1/history?deal=&workbook_id=[&sheet=&cell=]`: the workbook's saved
+  versions, newest first (its latest commit and every ancestor, at most 50),
+  and with `sheet` and `cell` (like `C7`) the versions where that cell's value
+  or formula changed, oldest first.

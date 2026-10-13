@@ -158,3 +158,43 @@ def test_browser_origin_rules(client):
         "origin": "http://localhost:5173", "access-control-request-method": "POST",
         "access-control-request-headers": "authorization,content-type"})
     assert preflight.status_code == 200
+
+
+def history(client, token, **params):
+    return client.get("/api/v1/history", params={"deal": "falcon", "workbook_id": WB_ID, **params},
+                      headers={"authorization": f"Bearer {token}"})
+
+
+def test_history_lists_versions_and_one_cells_changes(client, tmp_path):
+    token = tokens.create(PRIYA)
+    path = make_model(tmp_path / "Falcon LBO.xlsx")
+    save(client, token, path, saved_at=1_790_000_000_000)
+    make_model(path, growth=0.15, margin=0.2)  # growth unchanged in this version
+    save(client, token, path, saved_at=1_790_000_600_000)
+    make_model(path, growth=0.2, margin=0.2)
+    save(client, token, path, saved_at=1_790_001_200_000)
+
+    res = history(client, token, sheet="Assumptions", cell="C3").json()
+    assert len(res["versions"]) == 3
+    assert res["versions"][0]["author"] == "Priya Shah"
+    assert res["versions"][0]["committed_at"] > res["versions"][-1]["committed_at"]
+    assert res["cell"]["label"] == "Revenue growth"
+    assert [c["value"] for c in res["cell"]["changes"]] == [0.15, 0.2]
+    assert res["cell"]["changes"][-1]["commit"] == res["versions"][0]["commit"]
+
+
+def test_history_of_an_unsaved_workbook_is_empty(client):
+    res = history(client, tokens.create(PRIYA), sheet="Assumptions", cell="C3").json()
+    assert res == {"versions": [], "cell": {"sheet": "Assumptions", "cell": "C3", "label": "", "changes": []}}
+
+
+def test_history_respects_walls(client, tmp_path):
+    save(client, tokens.create(PRIYA), make_model(tmp_path / "Falcon LBO.xlsx"))
+    res = history(client, tokens.create(MARCUS))
+    assert res.status_code == 404
+
+
+@pytest.mark.parametrize("params", [{"sheet": "Assumptions"}, {"sheet": "A", "cell": "c3"}, {"sheet": "A", "cell": "A0"},
+                                    {"workbook_id": "../x"}])
+def test_history_rejects_bad_queries(client, params):
+    assert history(client, tokens.create(PRIYA), **params).status_code == 400
