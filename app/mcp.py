@@ -15,7 +15,7 @@ import re
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 
-from app import agent, governance, tokens
+from app import agent, auth, governance
 
 SERVER_NAME = "Provenance company brain"
 SERVER_VERSION = "0.1.0"
@@ -106,7 +106,7 @@ def call_tool(email: str, name: str, args: dict, base: str) -> dict:
 async def mcp_post(request: Request) -> Response:
     if not allowed_origin(request.headers.get("origin")):
         return JSONResponse({"error": "Origin not allowed"}, status_code=403)
-    email = tokens.from_header(request.headers.get("authorization"))
+    email = auth.from_header(request.headers.get("authorization"))
     if not email:
         return _unauthorized()
 
