@@ -63,3 +63,19 @@ bearer token.
   versions, newest first (its latest commit and every ancestor, at most 50),
   and with `sheet` and `cell` (like `C7`) the versions where that cell's value
   or formula changed, oldest first.
+
+## Who is calling
+
+- API tokens (`pb_...`) work everywhere, always.
+- `BRAIN_AUTH_MODE=supabase` also accepts a Supabase Auth access token (the
+  one Tessel holds when its user is signed in): checked against
+  `SUPABASE_URL`'s signing keys, or `SUPABASE_JWT_SECRET` for projects on the
+  legacy shared secret, with issuer and audience. `BRAIN_AUTH_MODE=local`
+  accepts tokens from Tessel's dev auth server (`LOCAL_AUTH_URL`).
+- Signing in proves who someone is; they must also be a user in the brain,
+  and staffing still decides what they see.
+- `BRAIN_REQUIRE_AUTH=1` closes the demo user switcher: the web UI asks for a
+  token and keeps an HttpOnly session cookie (12 hours; set
+  `BRAIN_SESSION_SECRET` so sessions survive restarts), and every `/api` and
+  `/files` request may act only as the signed-in user. Attempts to act as
+  someone else are refused and written to the audit log.

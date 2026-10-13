@@ -1,18 +1,19 @@
 """HTTP API. The `user` parameter is the demo user switcher; a real deployment derives it from the session."""
 
+import json
 import shutil
 import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import agent, api_v1, governance, ingest, mcp, store, vcs, watcher
+from app import agent, api_v1, auth, governance, ingest, mcp, store, vcs, watcher
 from app.config import STATIC_DIR
 
 
@@ -27,6 +28,63 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Provenance", lifespan=lifespan)
 app.include_router(mcp.router)
 app.include_router(api_v1.router)
+
+# Open without a credential even when sign-in is required: signing in, and asking whether it is required.
+OPEN_PATHS = {"/api/session", "/api/auth-config"}
+
+
+@app.middleware("http")
+async def identity_gate(request: Request, call_next):
+    """With BRAIN_REQUIRE_AUTH, the web UI's API answers only a signed-in caller, and only about themselves.
+
+    /api/v1 and /mcp authenticate every request themselves.
+    """
+    path = request.url.path
+    gated = path.startswith(("/api/", "/files/")) and not path.startswith("/api/v1/") and path not in OPEN_PATHS
+    if not auth.require_auth() or not gated or request.method == "OPTIONS":
+        return await call_next(request)
+    email = auth.from_header(request.headers.get("authorization")) or auth.user_for_cookie(request.cookies.get(auth.COOKIE))
+    if not email:
+        return JSONResponse({"detail": "Sign in first."}, status_code=401)
+    claimed = request.query_params.get("user")
+    if claimed is None and request.method == "POST":
+        try:
+            body = json.loads(await request.body() or b"{}")
+        except ValueError:
+            body = {}
+        claimed = body.get("user") if isinstance(body, dict) else None
+    if claimed is not None and claimed.lower() != email.lower():
+        governance.log(email, "blocked", f"acted as {claimed} on {path}", "blocked")
+        return JSONResponse({"detail": "You can only act as yourself."}, status_code=403)
+    request.state.user = email
+    return await call_next(request)
+
+
+class SessionRequest(BaseModel):
+    token: str
+
+
+@app.get("/api/auth-config")
+def auth_config():
+    return {"require_auth": auth.require_auth(), "mode": auth.mode()}
+
+
+@app.post("/api/session")
+def start_session(req: SessionRequest, request: Request, response: Response):
+    """Sign the web UI in with an API token or a sign-in token; sets an HttpOnly session cookie."""
+    email = auth.user_for_token(req.token)
+    if not email:
+        raise HTTPException(status_code=401, detail="That token was not accepted.")
+    response.set_cookie(auth.COOKIE, auth.session_cookie(email), max_age=auth.SESSION_SECONDS, httponly=True,
+                        samesite="strict", secure=request.url.scheme == "https")
+    governance.log(email, "sign_in", "web session")
+    return {"user": store.get_user(email)}
+
+
+@app.delete("/api/session")
+def end_session(response: Response):
+    response.delete_cookie(auth.COOKIE)
+    return {"ok": True}
 # Tessel's browser build calls /mcp and /api/v1 from its own origin; the desktop app sends none.
 app.add_middleware(
     CORSMiddleware,
@@ -114,7 +172,10 @@ def _require_commit(email: str, commit_id: str) -> dict:
 
 
 @app.get("/api/users")
-def users():
+def users(request: Request):
+    # The demo user switcher lists everyone; with sign-in required it lists only the caller.
+    if auth.require_auth():
+        return [store.get_user(request.state.user)]
     return store.list_users()
 
 

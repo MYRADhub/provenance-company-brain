@@ -465,11 +465,11 @@ function renderWho() {
   const u = userOf(S.user) || {};
   const menu = S.whoOpen ? `<div class="menu" role="menu">${S.users.map((x) => `
       <button data-email="${esc(x.email)}" class="${x.email === S.user ? "on" : ""}"><span class="avatar">${esc(initials(x.name))}</span>
-      <span><div class="n">${esc(x.name)}</div><div class="t">${esc(x.title)}</div></span></button>`).join("")}</div>` : "";
+      <span><div class="n">${esc(x.name)}</div><div class="t">${esc(x.title)}</div></span></button>`).join("")}${S.signedIn ? `<button data-signout="1"><span><div class="n">Sign out</div></span></button>` : ""}</div>` : "";
   $("whoWrap").innerHTML = `<button class="who-btn" id="whoBtn" aria-haspopup="menu"><span class="avatar">${esc(initials(u.name))}</span>
     <span><div class="n">${esc(u.name || "")}</div><div class="t">${esc(u.title || "")}</div></span>${ICON.chev}</button>${menu}`;
   $("whoBtn").addEventListener("click", (e) => { e.stopPropagation(); S.whoOpen = !S.whoOpen; renderWho(); });
-  $("whoWrap").querySelectorAll(".menu button").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); S.whoOpen = false; if (b.dataset.email !== S.user) selectUser(b.dataset.email); else renderWho(); }));
+  $("whoWrap").querySelectorAll(".menu button").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); S.whoOpen = false; if (b.dataset.signout) { signOut(); return; } if (b.dataset.email !== S.user) selectUser(b.dataset.email); else renderWho(); }));
 }
 function renderDeals() {
   const deals = (S.me && S.me.deals) || [];
@@ -1109,14 +1109,40 @@ $("themeBtn").addEventListener("click", () => {
 });
 try { const t = localStorage.getItem("prov_theme"); if (t) document.documentElement.dataset.theme = t; } catch (_) {}
 
+/* ---------- sign-in (only when the server requires it: BRAIN_REQUIRE_AUTH) ---------- */
+function renderSignIn(message) {
+  $("topbar").innerHTML = `<span class="deal">Sign in</span>`;
+  $("msgs").innerHTML = `<div class="empty"><h2>Sign in to Provenance</h2>
+    <p>Paste the access token your administrator gave you.</p>
+    <form id="signInForm" style="display:flex;gap:8px;justify-content:center">
+      <input id="signInToken" type="password" autocomplete="off" placeholder="pb_..." aria-label="Access token"
+        style="min-width:280px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--card);color:var(--text)">
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+    ${message ? `<p role="alert" style="margin-top:12px">${esc(message)}</p>` : ""}</div>`;
+  $("signInForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await api("/api/session", { method: "POST", body: JSON.stringify({ token: $("signInToken").value.trim() }) });
+      location.reload();
+    } catch (err) { renderSignIn(err.message); }
+  });
+}
+async function signOut() {
+  await api("/api/session", { method: "DELETE" }).catch(() => null);
+  location.reload();
+}
+
 (async function init() {
   try {
     S.users = await api("/api/users");
   } catch (e) {
+    if (e.status === 401) { renderSignIn(""); return; }
     $("topbar").innerHTML = `<span class="deal">Can't reach the server</span>`;
     $("msgs").innerHTML = `<div class="empty"><h2>Can't reach the server</h2><p>${esc(e.message)}</p></div>`;
     return;
   }
+  S.signedIn = await api("/api/auth-config").then((c) => c.require_auth).catch(() => false);
   let saved = null;
   try { saved = localStorage.getItem("prov_user"); } catch (_) {}
   const first = S.users.find((u) => u.email === saved) || S.users.find((u) => u.email.startsWith("priya")) || S.users[0];

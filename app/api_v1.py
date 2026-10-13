@@ -15,7 +15,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ValidationError
 
-from app import config, governance, ingest, mcp, retrieval, store, tokens, vcs, watcher
+from app import auth, config, governance, ingest, mcp, retrieval, store, vcs, watcher
 
 router = APIRouter(prefix="/api/v1")
 
@@ -27,7 +27,7 @@ UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 def _caller(authorization: str | None, origin: str | None) -> str:
     if not mcp.allowed_origin(origin):
         raise HTTPException(status_code=403, detail="Origin not allowed")
-    email = tokens.from_header(authorization)
+    email = auth.from_header(authorization)
     if not email:
         raise HTTPException(status_code=401, detail="A valid bearer token is required.",
                             headers={"WWW-Authenticate": 'Bearer realm="provenance"'})
